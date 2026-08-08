@@ -1,0 +1,65 @@
+# Python caches and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment files and local secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+wallet/
+Wallet_*/
+
+# VS Code and editor-local settings
+.vscode/
+*.code-workspace
+*.swp
+*.swo
+
+# Test output
+.tox/
+.nox/
+coverage.xml
+junit.xml
+test-results/
+
+# Local runtime and database artifacts
+*.log
+*.pid
+logs/
+tmp/
+temp/
+*.db
+*.sqlite
+*.sqlite3
+oradata/
+oracle-data/
+db-data/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini

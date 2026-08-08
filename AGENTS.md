@@ -1,0 +1,14 @@
+# PFC Configuration Tool Project Rules
+
+- Never use or commit real patient, payor, claim, or production data.
+- All test data must be synthetic.
+- Never commit credentials or `.env`.
+- Oracle compatibility is required.
+- Database-changing operations must support preview-before-confirmation.
+- HER and HEF changes must be performed atomically.
+- Unexpected or ambiguous database states must fail safely instead of guessing.
+- Do not add frameworks or dependencies without demonstrated need.
+- Keep the initial implementation simple and data-driven.
+- User-facing configuration must use plain-language labels; database procedure names and implementation details stay backend-only.
+- Never clone configuration from another payor.
+- Do not create application functionality until explicitly requested.
