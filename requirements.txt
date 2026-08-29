@@ -3,3 +3,4 @@ uvicorn
 oracledb
 python-dotenv
 pytest
+httpx2

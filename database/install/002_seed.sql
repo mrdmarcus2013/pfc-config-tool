@@ -1,0 +1,6 @@
+WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK
+PROMPT Loading synthetic reference data...
+@@../02_seed_reference_data.sql
+PROMPT Loading synthetic scenario data...
+@@../03_seed_test_cases.sql
+PROMPT Synthetic POC data loaded.

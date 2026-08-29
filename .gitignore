@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+pytest-cache-files-*/
 .mypy_cache/
 .ruff_cache/
 .coverage
@@ -58,6 +59,8 @@ temp/
 oradata/
 oracle-data/
 db-data/
+/pfc-database.zip
+/service-facility-scripts.zip
 
 # Operating system files
 .DS_Store

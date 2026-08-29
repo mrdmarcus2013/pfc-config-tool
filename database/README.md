@@ -1,0 +1,156 @@
+# Synthetic Oracle POC database
+
+This database is deliberately synthetic and exists only to prove PFC, HER, and
+HEF resolution and future mutation behavior. It does not reproduce unknown
+production DDL, constraints, triggers, or indexes. No production data is used,
+and production deployment requires a separate schema review.
+
+Use a fresh, disposable Oracle schema for the first installation. From the
+repository root, connect without placing a password in shell history:
+
+```powershell
+sqlplus /nolog
+```
+
+Then run these commands inside SQL*Plus; `CONNECT` prompts for the password:
+
+```sql
+CONNECT your_poc_user@//localhost:1521/FREEPDB1
+@database/install/install_all.sql
+@database/tests/run_all.sql
+```
+
+To remove and recreate only the synthetic seed data while retaining the schema
+and compiled PL/SQL, run:
+
+```sql
+@database/04_reset_test_data.sql
+@database/install/002_seed.sql
+@database/tests/run_all.sql
+```
+
+The installation exits on SQL errors and explicitly rejects invalid Script 1,
+Script 2, option-layer, or supporting package objects.
+
+## Resolution architecture
+
+Script 1 is a diagnostic and development-research helper. Its
+`LINKING_FORM_LU` results do not determine what an option changes. Option
+definitions explicitly list every manually verified record-type target.
+Script 2 resolves the authoritative non-payor source and current state for one
+explicit record type. Script 3 consumes explicit option targets and performs a
+canonical rebuild; it does not call Script 1.
+
+The option type supports one or more targets. Provider Taxonomy uses one target;
+Service Facility uses its three explicit NM1/N3/N4 targets. Script 3 evaluates
+each target against its resolved non-payor source, returns a target action, and
+uses one state hash and savepoint for atomic multi-target PREVIEW/APPLY.
+
+Canonical payor state contains no override when source plus option overlays is
+identical to the source. Otherwise it contains exactly one complete payor HER
+and HEF configuration. Cleanup is limited to payor, billing form, and explicit
+record type, with HEFs deleted before HERs.
+
+PFC resolution requires the selected payor, a future `CPD_END_DATE`, electronic
+default media, and a null type of bill. A null requested plan considers only a
+null-plan PFC; a populated requested plan considers that plan and the null-plan
+fallback. The newest `CPD_START_DATE` wins, and a tie fails safely.
+`PAYOR_TYPE_GUID` is authoritative from `PAYORS`.
+
+Source HERs must be non-payor, null-plan, and null-type-of-bill rows. Within a
+template level, an exact payor type beats a generic null type. Source selection
+then follows matching user-form template, matching form template, and finally
+the null-template billing-form source. Missing or tied best sources fail safely.
+PFC template GUIDs select the source; a rebuilt payor HER copies both template
+GUIDs exactly from that resolved source and never from another payor.
+
+The minimal-override target actions are `NO_CHANGE`, `REMOVE_OVERRIDE`, and
+`REBUILD_OVERRIDE`. Functional desired state is compared with inherited source
+state before payor-only metadata is applied. Source-equivalent behavior requires
+zero payor HERs. A required override contains one complete HER and its complete
+source HEF set, with overlays applied. Cleanup scope is exactly `PAYOR_GUID` plus
+`BILLING_FORM_CODE` plus explicit `RECORD_TYPE_CODE`.
+
+A new or rebuilt payor HER uses the selected `PAYOR_GUID`, the authoritative
+`PAYORS.PAYOR_TYPE_GUID`, null `CARRY_FORWARD_IND`, and
+`INCLUDE_RECORD_DATA_ONCLAIM = 'Y'`. `MAX_CARRY_FORWARD` remains source-derived,
+and an existing null `PAYOR_TYPE_GUID` alone is tolerated as canonical.
+
+For a managed HEF, `STO_PROC_NAME` and `HARD_CODED_DATA` are alternative value
+mechanisms. Setting a non-null stored procedure clears hard-coded data, and
+setting non-null hard-coded data clears the stored procedure. Setting both to
+non-null values is invalid. `KEEP`/`KEEP` preserves the source exactly, while a
+standalone `CLEAR` clears only its requested attribute. Unmanaged HEFs are not
+normalized.
+
+## Production-validated options
+
+Provider Taxonomy explicitly targets `B2000A0030PRV080`. ON uses HER procedure
+`RETURN_1` and PRV03 procedure `G_PROVIDER_TAXONOMY_CODE`; OFF uses HER procedure
+`RETURN_0`.
+
+Service Facility explicitly targets NM1 `D2310E2500NM1343`, N3
+`D2310E2650N3346`, and N4 `D2310E2700N4347`. Its five configurations are:
+
+- ALWAYS/Y: NM1, N3, and N4 use `RETURN_1`.
+- ALWAYS/N: NM1 uses `RETURN_1`; N3 and N4 use `RETURN_0`.
+- CONDITIONAL/Y: all three use `G_D2310E2500NM1343_COUNT`.
+- CONDITIONAL/N: NM1 uses the conditional procedure; N3 and N4 use `RETURN_0`.
+- NEVER/N: all three use `RETURN_0`.
+
+Service Facility preview, locking, revalidation, hash calculation, changes, and
+verification cover all three targets under one savepoint. The operation is
+atomic and Script 3 never commits internally.
+
+Provider Taxonomy and Service Facility are the first production-validated
+database options. Files 03 through 06 in `database/production_tests` are manual
+validation harnesses, not deployment scripts. Preview 03 and 05 are read-only.
+Rollback APPLY validation 04 and 06 never commit, always finish with a full
+rollback, and must run only in fresh, dedicated Toad sessions containing no
+unrelated uncommitted work.
+
+Accepted validation gap: Service Facility `REBUILD_OVERRIDE` passed in
+production before the final generic paired HEF rule. The final paired-rule
+rebuild path passed locally, but that final rebuild path could not be rerun in
+production. This is an accepted validation gap, not an implementation defect.
+
+If SQL*Plus is not installed, the repository also includes a Python runner that
+loads the existing `.env` without printing credentials:
+
+```powershell
+python -m pip install -r requirements.txt
+python database/run_poc.py all
+```
+
+After the initial installation, use `python database/run_poc.py test` to rerun
+all already-installed tests without recreating or reseeding the schema, or use
+`python database/run_poc.py reset` to reset and reseed the POC data.
+
+## Script 3 incremental workflow
+
+Script 3 is installed and tested without recreating tables or bulk reseeding:
+
+```powershell
+python database/run_poc.py prep3
+python database/run_poc.py install3
+python database/run_poc.py test3
+```
+
+`prep3` recompiles the explicit-target option definitions and safely updates
+only the known legacy synthetic PAYOR_B fixture when that exact old fixture is
+present. `install3` installs only `PFC_APPLY_OPTION`. Neither action recreates
+tables or reseeds unrelated scenarios. `test3` runs only the Script 3 tests;
+`test` includes them in the complete suite. Every mutation scenario rolls back
+so repeated runs start from the same data.
+
+Schemas seeded before the explicit-target reconciliation should be reset and
+reseeded before `prep3`; the current synthetic fixtures use the verified
+Provider Taxonomy identifiers and include the three Service Facility sources.
+
+Script 3 is proven only against this synthetic schema. Its deterministic SHA256
+state hash uses a `VARCHAR2(32767)` serialization suitable for the small POC
+dataset, not large production configurations. APPLY intentionally takes a
+coarse `FOR UPDATE` lock on the PAYORS row to serialize configuration changes
+for one payor. Production DDL, constraints, triggers, indexes, transaction
+boundaries, serialization sizing, and lock strategy all require database-team
+review before deployment.
