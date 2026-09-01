@@ -11,6 +11,11 @@ GuidText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
 PublicOptionCode = Literal[
     "PROVIDER_TAXONOMY_ON",
     "PROVIDER_TAXONOMY_OFF",
+    "SERVICE_FACILITY_ALWAYS_ADDRESS_YES",
+    "SERVICE_FACILITY_ALWAYS_ADDRESS_NO",
+    "SERVICE_FACILITY_CONDITIONAL_ADDRESS_YES",
+    "SERVICE_FACILITY_CONDITIONAL_ADDRESS_NO",
+    "SERVICE_FACILITY_NEVER",
 ]
 StateHash = Annotated[
     str,

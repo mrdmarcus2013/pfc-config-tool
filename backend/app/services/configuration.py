@@ -30,6 +30,42 @@ OPTION_FIELDS = [
             },
         ],
     },
+    {
+        "field_number": "77",
+        "field_label": "Service Facility",
+        "options": [
+            {
+                "option_code": "SERVICE_FACILITY_ALWAYS_ADDRESS_YES",
+                "display_label": "Always report service facility; report address",
+            },
+            {
+                "option_code": "SERVICE_FACILITY_ALWAYS_ADDRESS_NO",
+                "display_label": (
+                    "Always report service facility; do not report address"
+                ),
+            },
+            {
+                "option_code": "SERVICE_FACILITY_CONDITIONAL_ADDRESS_YES",
+                "display_label": (
+                    "Report service facility when care location is not HOME; "
+                    "report address"
+                ),
+            },
+            {
+                "option_code": "SERVICE_FACILITY_CONDITIONAL_ADDRESS_NO",
+                "display_label": (
+                    "Report service facility when care location is not HOME; "
+                    "do not report address"
+                ),
+            },
+            {
+                "option_code": "SERVICE_FACILITY_NEVER",
+                "display_label": (
+                    "Never report service facility; do not report address"
+                ),
+            },
+        ],
+    },
 ]
 
 _OPTION_FIELD_NUMBERS = {

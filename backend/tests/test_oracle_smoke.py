@@ -22,7 +22,12 @@ def test_installed_synthetic_oracle_poc_preview():
 
         options = client.get("/api/options")
         assert options.status_code == 200
-        assert options.json()["fields"][0]["field_number"] == "81"
+        fields = {
+            field["field_number"]: field for field in options.json()["fields"]
+        }
+        assert set(fields) == {"77", "81"}
+        assert fields["81"]["field_label"] == "Provider Taxonomy"
+        assert fields["77"]["field_label"] == "Service Facility"
 
         preview = client.post(
             "/api/config/preview",
@@ -36,3 +41,27 @@ def test_installed_synthetic_oracle_poc_preview():
         assert preview.status_code == 200
         assert preview.json()["status"] in {"PREVIEW", "NO_CHANGE"}
         assert len(preview.json()["state_hash"]) == 64
+
+        service_facility_preview = client.post(
+            "/api/config/preview",
+            json={
+                "payor_guid": "10000000-0000-0000-0000-0000000000A1",
+                "plan_guid": None,
+                "option_code": "SERVICE_FACILITY_ALWAYS_ADDRESS_YES",
+                "audit_user": "90000000-0000-0000-0000-000000000003",
+            },
+        )
+        assert service_facility_preview.status_code == 200
+        service_body = service_facility_preview.json()
+        assert service_body["status"] == "PREVIEW"
+        assert service_body["option_code"] == (
+            "SERVICE_FACILITY_ALWAYS_ADDRESS_YES"
+        )
+        assert service_body["field_number"] == "77"
+        assert len(service_body["state_hash"]) == 64
+        target_identifiers = {
+            change["target_identifier"]
+            for change in service_body["debug_changes"]
+            if change["target_identifier"] is not None
+        }
+        assert len(target_identifiers) >= 3

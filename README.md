@@ -43,9 +43,29 @@ The initial API surface is:
 - `POST /api/config/preview`
 - `POST /api/config/apply`
 
-Provider Taxonomy is the only publicly accepted configuration option in this
-checkpoint. Service Facility is validated in the database layer but remains
-outside the public API until the next integration phase.
+The API accepts these public option codes:
+
+| Configuration area | Field | Option code | Meaning |
+| --- | --- | --- | --- |
+| Provider Taxonomy | 81 | `PROVIDER_TAXONOMY_ON` | Enable Provider Taxonomy |
+| Provider Taxonomy | 81 | `PROVIDER_TAXONOMY_OFF` | Disable Provider Taxonomy |
+| Service Facility | 77 | `SERVICE_FACILITY_ALWAYS_ADDRESS_YES` | Always report the service facility and its address |
+| Service Facility | 77 | `SERVICE_FACILITY_ALWAYS_ADDRESS_NO` | Always report the service facility without its address |
+| Service Facility | 77 | `SERVICE_FACILITY_CONDITIONAL_ADDRESS_YES` | Report the service facility and address when the care location is not HOME |
+| Service Facility | 77 | `SERVICE_FACILITY_CONDITIONAL_ADDRESS_NO` | Report the service facility without its address when the care location is not HOME |
+| Service Facility | 77 | `SERVICE_FACILITY_NEVER` | Never report the service facility; address is effectively No |
+
+Clients send exactly one option code per preview or apply request. Service
+Facility remains one configuration operation even though Oracle manages its
+NM1, N3, and N4 targets atomically. There is no `NEVER` plus address `YES`
+configuration.
+
+Clients must preview a change before applying it. APPLY requires the state hash
+returned by PREVIEW for the same configuration context and option. The
+application rolls PREVIEW transactions back, commits APPLY only after Oracle
+successfully applies and verifies the configuration, and rolls back every
+failure. Oracle remains authoritative for resolution, source selection, minimal
+overrides, cloning, multi-target atomicity, and state hashing.
 
 Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs`
 while the server is running.
@@ -58,8 +78,9 @@ Run mocked unit and API tests without an Oracle connection:
 python -m pytest backend/tests -q
 ```
 
-To smoke-test health, option discovery, and a read-only preview against the already
-installed synthetic Oracle POC, use:
+To smoke-test health, option discovery, and read-only Provider Taxonomy and
+Service Facility previews against the already installed synthetic Oracle POC,
+use:
 
 ```powershell
 $env:RUN_ORACLE_INTEGRATION='1'
