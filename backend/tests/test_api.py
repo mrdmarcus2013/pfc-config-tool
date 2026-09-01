@@ -42,6 +42,24 @@ class StubService:
     def preview(self, **request):
         return self._result("PREVIEW", request)
 
+    def current(self, **request):
+        is_service_facility = request["field_number"] == "77"
+        return {
+            "status": "RESOLVED",
+            "field_number": request["field_number"],
+            "capability": "service-facility" if is_service_facility else "provider-taxonomy",
+            "effective_option_code": (
+                "SERVICE_FACILITY_NEVER" if is_service_facility else "PROVIDER_TAXONOMY_OFF"
+            ),
+            "display": (
+                {"mode": "NEVER", "report_address": "N", "enabled": None}
+                if is_service_facility
+                else {"mode": None, "report_address": None, "enabled": False}
+            ),
+            "pfc_guid": "30000000-0000-0000-0000-0000000000A1",
+            "canonical": True,
+        }
+
     def apply(self, **request):
         return self._result("APPLIED", request)
 
@@ -125,6 +143,35 @@ def test_preview_validates_required_request_fields(client):
     request.pop("audit_user")
 
     response = client.post("/api/config/preview", json=request)
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("field_number", ["77", "81"])
+def test_current_configuration_accepts_supported_fields(client, field_number):
+    response = client.post(
+        "/api/config/current",
+        json={
+            "payor_guid": BASE_REQUEST["payor_guid"],
+            "plan_guid": None,
+            "field_number": field_number,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "RESOLVED"
+    assert response.json()["field_number"] == field_number
+
+
+def test_current_configuration_rejects_unsupported_field(client):
+    response = client.post(
+        "/api/config/current",
+        json={
+            "payor_guid": BASE_REQUEST["payor_guid"],
+            "plan_guid": None,
+            "field_number": "78",
+        },
+    )
 
     assert response.status_code == 422
 
@@ -258,3 +305,23 @@ def test_unknown_oracle_error_does_not_expose_credentials_or_sql():
     assert "password" not in rendered
     assert "select" not in rendered
     assert "sensitive_table" not in rendered
+
+
+@pytest.mark.parametrize(
+    ("code", "status_code", "category"),
+    [
+        (20010, 404, "configuration_not_found"),
+        (20011, 409, "ambiguous_target"),
+        (20020, 409, "source_not_found"),
+        (20021, 409, "ambiguous_source"),
+        (20041, 409, "current_state_unsupported"),
+    ],
+)
+def test_expected_current_state_oracle_errors_map_safely(code, status_code, category):
+    details = SimpleNamespace(code=code, message="raw Oracle implementation detail")
+    translated = translate_oracle_error(oracledb.DatabaseError(details), "current")
+
+    assert translated.status_code == status_code
+    assert translated.category == category
+    assert "oracle" not in translated.message.lower()
+    assert "implementation" not in translated.message.lower()

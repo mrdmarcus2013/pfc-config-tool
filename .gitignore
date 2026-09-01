@@ -47,6 +47,13 @@ coverage.xml
 junit.xml
 test-results/
 
+# Frontend dependencies and build output
+node_modules/
+frontend/dist/
+frontend/coverage/
+.npm-cache/
+frontend/.test-build/
+
 # Local runtime and database artifacts
 *.log
 *.pid

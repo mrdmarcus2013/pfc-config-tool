@@ -21,6 +21,10 @@ DECLARE
             DEFAULT 'B2000A0030PRV080',
         p_expected_source_hef_count  IN PLS_INTEGER DEFAULT NULL,
         p_expected_target_hard       IN hcfa_electronic_fields.hard_coded_data%TYPE
+            DEFAULT NULL,
+        p_expected_billing_form      IN pfc.billing_form_code%TYPE
+            DEFAULT 'UB04',
+        p_expected_source_her_proc   IN hcfa_electronic_records.sto_proc_name%TYPE
             DEFAULT NULL
     ) IS
         l_results                    SYS_REFCURSOR;
@@ -116,6 +120,13 @@ DECLARE
                 );
             END IF;
 
+            IF l_billing_form_code <> p_expected_billing_form THEN
+                RAISE_APPLICATION_ERROR(
+                    -20919,
+                    p_label || ': unexpected billing form.'
+                );
+            END IF;
+
             IF l_payor_specific_exists <> p_expected_payor_exists THEN
                 RAISE_APPLICATION_ERROR(
                     -20912,
@@ -131,6 +142,13 @@ DECLARE
                     );
                 END IF;
                 l_clone_source_found := TRUE;
+                IF p_expected_source_her_proc IS NOT NULL
+                   AND l_her_sto_proc_name <> p_expected_source_her_proc THEN
+                    RAISE_APPLICATION_ERROR(
+                        -20913,
+                        p_label || ': unexpected inherited HER procedure.'
+                    );
+                END IF;
                 IF l_field_number IS NOT NULL THEN
                     l_source_hef_count := l_source_hef_count + 1;
                 END IF;
@@ -309,6 +327,48 @@ BEGIN
         '11000000-0000-0000-0000-000000000002',
         '30000000-0000-0000-0000-0000000000A8',
         'N'
+    );
+
+    assert_scenario(
+        'UI Demo Provider Taxonomy inherited OFF',
+        '10000000-0000-0000-0000-00000000D001',
+        '20000000-0000-0000-0000-00000000D001',
+        '11000000-0000-0000-0000-000000000001',
+        '30000000-0000-0000-0000-00000000D081',
+        'N',
+        p_expected_source_hef_count => 4,
+        p_expected_billing_form => '837I_5010',
+        p_expected_source_her_proc => 'RETURN_0'
+    );
+
+    assert_scenario(
+        'UI Demo Service Facility NM1 inherited OFF',
+        '10000000-0000-0000-0000-00000000D001',
+        '20000000-0000-0000-0000-00000000D001',
+        '11000000-0000-0000-0000-000000000001',
+        '31000000-0000-0000-0000-00000000D771',
+        'N', NULL, NULL, 'D2310E2500NM1343', 5, NULL,
+        '837I_5010', 'RETURN_0'
+    );
+
+    assert_scenario(
+        'UI Demo Service Facility N3 inherited OFF',
+        '10000000-0000-0000-0000-00000000D001',
+        '20000000-0000-0000-0000-00000000D001',
+        '11000000-0000-0000-0000-000000000001',
+        '31000000-0000-0000-0000-00000000D772',
+        'N', NULL, NULL, 'D2310E2650N3346', 2, NULL,
+        '837I_5010', 'RETURN_0'
+    );
+
+    assert_scenario(
+        'UI Demo Service Facility N4 inherited OFF',
+        '10000000-0000-0000-0000-00000000D001',
+        '20000000-0000-0000-0000-00000000D001',
+        '11000000-0000-0000-0000-000000000001',
+        '31000000-0000-0000-0000-00000000D773',
+        'N', NULL, NULL, 'D2310E2700N4347', 3, NULL,
+        '837I_5010', 'RETURN_0'
     );
 
     assert_scenario(

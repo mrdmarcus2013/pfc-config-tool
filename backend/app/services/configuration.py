@@ -89,6 +89,23 @@ BEGIN
 END;
 """
 
+_CURRENT_BLOCK = """
+BEGIN
+    pfc_get_current_config(
+        p_payor_guid   => :payor_guid,
+        p_plan_guid    => :plan_guid,
+        p_field_number => :field_number,
+        p_result       => :result_cursor
+    );
+END;
+"""
+
+_CURRENT_OPTION_FIELDS = {
+    option["option_code"]: field["field_number"]
+    for field in OPTION_FIELDS
+    for option in field["options"]
+}
+
 
 def _rows_as_dicts(cursor: Any) -> list[dict[str, Any]]:
     columns = [description[0].lower() for description in cursor.description]
@@ -164,6 +181,71 @@ class ConfigurationService:
             mode="PREVIEW",
             expected_state_hash=None,
         )
+
+    def current(
+        self,
+        *,
+        payor_guid: str,
+        plan_guid: str | None,
+        field_number: str,
+    ) -> dict[str, Any]:
+        connection = None
+        cursor = None
+        result_cursor = None
+        try:
+            connection = self._connection_factory()
+            cursor = connection.cursor()
+            result_out = cursor.var(oracledb.DB_TYPE_CURSOR)
+            cursor.execute(
+                _CURRENT_BLOCK,
+                payor_guid=payor_guid,
+                plan_guid=plan_guid,
+                field_number=field_number,
+                result_cursor=result_out,
+            )
+            result_cursor = result_out.getvalue()
+            rows = _rows_as_dicts(result_cursor)
+            if len(rows) != 1:
+                raise ApiError(
+                    status_code=500,
+                    category="application_failure",
+                    message="The database returned an invalid current-state result.",
+                )
+            response = self._current_response(rows[0], field_number)
+            connection.rollback()
+            return response
+        except ApiError:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise
+        except oracledb.DatabaseError as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise translate_oracle_error(exc, "current configuration") from None
+        except DatabaseConfigurationError as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise ApiError(
+                status_code=503,
+                category="database_failure",
+                message="The database connection is not configured.",
+            ) from exc
+        except Exception as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            logger.error("Unexpected current-state adapter failure (%s)", type(exc).__name__)
+            raise ApiError(
+                status_code=500,
+                category="application_failure",
+                message="The current configuration could not be resolved safely.",
+            ) from None
+        finally:
+            if result_cursor is not None:
+                _close_safely(result_cursor, "current-state result cursor")
+            if cursor is not None:
+                _close_safely(cursor, "current-state procedure cursor")
+            if connection is not None:
+                _close_safely(connection, "current-state connection")
 
     def apply(
         self,
@@ -303,4 +385,53 @@ class ConfigurationService:
                 }
                 for change in changes
             ],
+        }
+
+    @staticmethod
+    def _current_response(row: dict[str, Any], requested_field: str) -> dict[str, Any]:
+        status = str(row.get("status"))
+        field_number = str(row.get("field_number"))
+        capability = str(row.get("capability"))
+        option_code = str(row.get("effective_option_code"))
+        expected_capability = {
+            "77": "service-facility",
+            "81": "provider-taxonomy",
+        }.get(requested_field)
+        if (
+            status != "RESOLVED"
+            or field_number != requested_field
+            or capability != expected_capability
+            or _CURRENT_OPTION_FIELDS.get(option_code) != requested_field
+            or not row.get("pfc_guid")
+        ):
+            raise ApiError(
+                status_code=500,
+                category="application_failure",
+                message="The database returned an invalid current-state result.",
+            )
+
+        canonical_value = row.get("is_canonical")
+        if canonical_value not in (None, "Y", "N"):
+            raise ApiError(500, "application_failure", "The database returned an invalid current-state result.")
+
+        if requested_field == "77":
+            mode = row.get("mode")
+            report_address = row.get("report_address")
+            if mode not in ("ALWAYS", "CONDITIONAL", "NEVER") or report_address not in ("Y", "N"):
+                raise ApiError(500, "application_failure", "The database returned an invalid current-state result.")
+            display = {"mode": mode, "report_address": report_address, "enabled": None}
+        else:
+            enabled = row.get("enabled")
+            if enabled not in ("Y", "N"):
+                raise ApiError(500, "application_failure", "The database returned an invalid current-state result.")
+            display = {"mode": None, "report_address": None, "enabled": enabled == "Y"}
+
+        return {
+            "status": status,
+            "field_number": field_number,
+            "capability": capability,
+            "effective_option_code": option_code,
+            "display": display,
+            "pfc_guid": str(row["pfc_guid"]),
+            "canonical": None if canonical_value is None else canonical_value == "Y",
         }

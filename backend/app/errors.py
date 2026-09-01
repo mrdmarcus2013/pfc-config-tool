@@ -39,6 +39,8 @@ _ORACLE_ERROR_MAP: dict[int, tuple[int, str, str]] = {
     20038: (409, "ambiguous_target", "A required option target is ambiguous."),
     20039: (500, "verification_failure", "The configuration change could not be verified."),
     20040: (500, "application_failure", "The configuration operation failed safely."),
+    20041: (409, "current_state_unsupported", "The current effective configuration is inconsistent or unsupported."),
+    20042: (422, "unsupported_field", "Current configuration is not available for that field."),
 }
 
 

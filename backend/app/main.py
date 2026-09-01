@@ -9,6 +9,8 @@ from backend.app.errors import ApiError
 from backend.app.models import (
     ApplyRequest,
     ConfigurationResponse,
+    CurrentConfigurationRequest,
+    CurrentConfigurationResponse,
     ErrorResponse,
     HealthResponse,
     OptionsResponse,
@@ -50,6 +52,14 @@ def preview(
     service: ConfigurationService = Depends(get_configuration_service),
 ) -> dict[str, object]:
     return service.preview(**request.model_dump())
+
+
+@app.post("/api/config/current", response_model=CurrentConfigurationResponse)
+def current_configuration(
+    request: CurrentConfigurationRequest,
+    service: ConfigurationService = Depends(get_configuration_service),
+) -> dict[str, object]:
+    return service.current(**request.model_dump())
 
 
 @app.post("/api/config/apply", response_model=ConfigurationResponse)

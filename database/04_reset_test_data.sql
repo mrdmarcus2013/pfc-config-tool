@@ -4,6 +4,25 @@
  */
 SET DEFINE OFF
 
+/* Remove Apply-created rows for this POC's synthetic payors regardless of
+ * which synthetic audit user performed the local test operation. */
+DELETE FROM hcfa_electronic_fields f
+WHERE EXISTS (
+    SELECT 1
+    FROM hcfa_electronic_records h
+    JOIN payors p ON p.payor_guid = h.payor_guid
+    WHERE h.electronic_rec_guid = f.electronic_rec_guid
+      AND p.rec_ent_user = '90000000-0000-0000-0000-000000000001'
+);
+
+DELETE FROM hcfa_electronic_records h
+WHERE EXISTS (
+    SELECT 1
+    FROM payors p
+    WHERE p.payor_guid = h.payor_guid
+      AND p.rec_ent_user = '90000000-0000-0000-0000-000000000001'
+);
+
 DELETE FROM hcfa_electronic_fields
 WHERE rec_ent_user = '90000000-0000-0000-0000-000000000001';
 

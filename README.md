@@ -1,10 +1,10 @@
 # PFC Configuration Tool
 
-PFC Configuration Tool currently includes a synthetic Oracle proof of concept and
-a thin FastAPI backend. Oracle is the authoritative configuration engine: the API
-validates request shape, manages transactions, invokes the stored procedure, and
-returns user-safe results. It does not reproduce resolver or comparison logic in
-Python. No frontend is included yet.
+PFC Configuration Tool includes a synthetic Oracle proof of concept, a thin
+FastAPI backend, and a React/Vite frontend for the first two configurable claim
+fields. Oracle is the authoritative configuration engine: the API validates
+request shape, manages transactions, invokes stored procedures, and returns
+user-safe results. It does not reproduce resolver or comparison logic in Python.
 
 ## Local Oracle Development
 
@@ -40,6 +40,7 @@ The initial API surface is:
 
 - `GET /api/health`
 - `GET /api/options`
+- `POST /api/config/current`
 - `POST /api/config/preview`
 - `POST /api/config/apply`
 
@@ -59,6 +60,13 @@ Clients send exactly one option code per preview or apply request. Service
 Facility remains one configuration operation even though Oracle manages its
 NM1, N3, and N4 targets atomically. There is no `NEVER` plus address `YES`
 configuration.
+
+`POST /api/config/current` accepts `payor_guid`, nullable `plan_guid`, and
+`field_number` (`77` or `81`). It performs one read-only Oracle resolution and
+returns the effective public option plus a small user-oriented display model.
+It does not accept an audit user or client-selected Oracle target. Current-state
+reads roll back and never commit; inherited sources and payor overrides are
+resolved by Oracle.
 
 Clients must preview a change before applying it. APPLY requires the state hash
 returned by PREVIEW for the same configuration context and option. The
@@ -88,5 +96,6 @@ python -m pytest backend/tests/test_oracle_smoke.py -q
 Remove-Item Env:RUN_ORACLE_INTEGRATION
 ```
 
-The smoke test uses only the synthetic `PAYOR_A` fixture and invokes `PREVIEW`, so
-the adapter rolls the transaction back and does not persist a configuration change.
+The smoke test uses only synthetic fixtures and invokes read-only current-state
+resolution and `PREVIEW`, so the adapter rolls transactions back and does not
+persist a configuration change.

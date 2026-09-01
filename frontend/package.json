@@ -1,0 +1,23 @@
+{
+  "name": "pfc-config-tool-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --configLoader native",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "test:compile": "tsc -p tsconfig.test.json",
+    "test": "npm run test:compile && node --test --experimental-test-isolation=none tests/*.test.mjs",
+    "build": "npm run typecheck && vite build --configLoader native"
+  },
+  "dependencies": {
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.12",
+    "@types/react-dom": "19.1.9",
+    "typescript": "5.9.2",
+    "vite": "7.1.3"
+  }
+}

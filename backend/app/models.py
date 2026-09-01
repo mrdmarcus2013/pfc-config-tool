@@ -17,6 +17,7 @@ PublicOptionCode = Literal[
     "SERVICE_FACILITY_CONDITIONAL_ADDRESS_NO",
     "SERVICE_FACILITY_NEVER",
 ]
+SupportedFieldNumber = Literal["77", "81"]
 StateHash = Annotated[
     str,
     StringConstraints(strip_whitespace=True, pattern=r"^[0-9A-F]{64}$"),
@@ -54,6 +55,30 @@ class PreviewRequest(BaseModel):
 
 class ApplyRequest(PreviewRequest):
     expected_state_hash: StateHash
+
+
+class CurrentConfigurationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    payor_guid: GuidText
+    plan_guid: GuidText | None = None
+    field_number: SupportedFieldNumber
+
+
+class CurrentConfigurationDisplay(BaseModel):
+    mode: Literal["ALWAYS", "CONDITIONAL", "NEVER"] | None = None
+    report_address: Literal["Y", "N"] | None = None
+    enabled: bool | None = None
+
+
+class CurrentConfigurationResponse(BaseModel):
+    status: Literal["RESOLVED"]
+    field_number: SupportedFieldNumber
+    capability: Literal["service-facility", "provider-taxonomy"]
+    effective_option_code: PublicOptionCode
+    display: CurrentConfigurationDisplay
+    pfc_guid: str
+    canonical: bool | None = None
 
 
 class TechnicalChange(BaseModel):

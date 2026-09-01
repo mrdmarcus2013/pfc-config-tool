@@ -83,6 +83,21 @@ non-null values is invalid. `KEEP`/`KEEP` preserves the source exactly, while a
 standalone `CLEAR` clears only its requested attribute. Unmanaged HEFs are not
 normalized.
 
+## Synthetic frontend demo context
+
+The seed data includes `Synthetic UI Demo Payor` for local frontend development:
+
+- payor: `10000000-0000-0000-0000-00000000D001`
+- null plan
+- PFC: `20000000-0000-0000-0000-00000000D001`
+- billing form: `837I_5010`
+
+Its billing-form-level generic sources inherit Provider Taxonomy OFF and Service
+Facility NEVER/OFF. It starts with no payor HER/HEF overrides, so Provider
+Taxonomy ON and Service Facility ALWAYS/address-yes produce meaningful rebuild
+previews through the existing generic engine. No demo-specific logic exists in
+the resolver or apply procedure.
+
 ## Production-validated options
 
 Provider Taxonomy explicitly targets `B2000A0030PRV080`. ON uses HER procedure
@@ -101,6 +116,14 @@ Service Facility explicitly targets NM1 `D2310E2500NM1343`, N3
 Service Facility preview, locking, revalidation, hash calculation, changes, and
 verification cover all three targets under one savepoint. The operation is
 atomic and Script 3 never commits internally.
+
+`PFC_GET_CURRENT_CONFIG` is the read-only current-state companion for fields 77
+and 81. It reuses the final PFC and source resolver for each physical target,
+combines inherited behavior with any payor override, and maps only the seven
+supported public option states. Mixed Service Facility behavior and unsupported
+Provider Taxonomy behavior fail safely instead of being guessed. Hard-coded
+effective Provider Taxonomy ON is reported as ON with a noncanonical indicator.
+The procedure performs no DML and does not commit.
 
 Provider Taxonomy and Service Facility are the first production-validated
 database options. Files 03 through 06 in `database/production_tests` are manual
@@ -138,7 +161,8 @@ python database/run_poc.py test3
 
 `prep3` recompiles the explicit-target option definitions and safely updates
 only the known legacy synthetic PAYOR_B fixture when that exact old fixture is
-present. `install3` installs only `PFC_APPLY_OPTION`. Neither action recreates
+present. `install3` installs `PFC_APPLY_OPTION` and its read-only
+`PFC_GET_CURRENT_CONFIG` companion. Neither action recreates
 tables or reseeds unrelated scenarios. `test3` runs only the Script 3 tests;
 `test` includes them in the complete suite. Every mutation scenario rolls back
 so repeated runs start from the same data.

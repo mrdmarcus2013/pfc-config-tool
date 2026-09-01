@@ -351,4 +351,115 @@ INSERT ALL
     )
 SELECT 1 FROM dual;
 
+/*
+ * Billing-form-level generic sources for the synthetic 837I_5010 UI demo.
+ * They deliberately inherit the same OFF/NEVER behavior as the UB04 sources;
+ * no payor-specific configuration is cloned or introduced.
+ */
+INSERT INTO hcfa_electronic_records (
+    electronic_rec_guid, loop_id, contiguity_ind, billing_form_code,
+    record_name, record_type_code, record_size, mandatory_ind,
+    req_for_claim_ind, payor_type_guid, payor_guid, plan_guid,
+    type_of_bill, detail_ind, max_number, invoice_ind,
+    form_template_guid, carry_forward_ind, max_carry_forward,
+    sto_proc_name, user_form_template_guid, notes,
+    rec_ent_date, rec_ent_user, rec_mod_date, rec_mod_user,
+    include_record_data_onclaim
+)
+SELECT
+    CASE h.electronic_rec_guid
+        WHEN '30000000-0000-0000-0000-000000000001'
+            THEN '30000000-0000-0000-0000-00000000D081'
+        WHEN '31000000-0000-0000-0000-000000000001'
+            THEN '31000000-0000-0000-0000-00000000D771'
+        WHEN '31000000-0000-0000-0000-000000000002'
+            THEN '31000000-0000-0000-0000-00000000D772'
+        WHEN '31000000-0000-0000-0000-000000000003'
+            THEN '31000000-0000-0000-0000-00000000D773'
+    END,
+    h.loop_id,
+    h.contiguity_ind,
+    '837I_5010',
+    h.record_name,
+    h.record_type_code,
+    h.record_size,
+    h.mandatory_ind,
+    h.req_for_claim_ind,
+    h.payor_type_guid,
+    h.payor_guid,
+    h.plan_guid,
+    h.type_of_bill,
+    h.detail_ind,
+    h.max_number,
+    h.invoice_ind,
+    h.form_template_guid,
+    h.carry_forward_ind,
+    h.max_carry_forward,
+    h.sto_proc_name,
+    h.user_form_template_guid,
+    'Synthetic 837I_5010 UI demo source',
+    h.rec_ent_date,
+    h.rec_ent_user,
+    h.rec_mod_date,
+    h.rec_mod_user,
+    h.include_record_data_onclaim
+FROM hcfa_electronic_records h
+WHERE h.electronic_rec_guid IN (
+    '30000000-0000-0000-0000-000000000001',
+    '31000000-0000-0000-0000-000000000001',
+    '31000000-0000-0000-0000-000000000002',
+    '31000000-0000-0000-0000-000000000003'
+);
+
+INSERT INTO hcfa_electronic_fields (
+    field_number, electronic_rec_guid, field_name, record_type_code,
+    sto_proc_name, pic, field_spec, position_from, position_thru,
+    field_name_desc, mandatory_ind, must_fit_length_ind, order_num,
+    repeats, detail_ind, occurs_next, hard_coded_data, field_format,
+    caps_ind, required_subelement_ind, rec_ent_date, rec_ent_user,
+    rec_mod_date, rec_mod_user, include_data_onclaim
+)
+SELECT
+    f.field_number,
+    CASE f.electronic_rec_guid
+        WHEN '30000000-0000-0000-0000-000000000001'
+            THEN '30000000-0000-0000-0000-00000000D081'
+        WHEN '31000000-0000-0000-0000-000000000001'
+            THEN '31000000-0000-0000-0000-00000000D771'
+        WHEN '31000000-0000-0000-0000-000000000002'
+            THEN '31000000-0000-0000-0000-00000000D772'
+        WHEN '31000000-0000-0000-0000-000000000003'
+            THEN '31000000-0000-0000-0000-00000000D773'
+    END,
+    f.field_name,
+    f.record_type_code,
+    f.sto_proc_name,
+    f.pic,
+    f.field_spec,
+    f.position_from,
+    f.position_thru,
+    f.field_name_desc,
+    f.mandatory_ind,
+    f.must_fit_length_ind,
+    f.order_num,
+    f.repeats,
+    f.detail_ind,
+    f.occurs_next,
+    f.hard_coded_data,
+    f.field_format,
+    f.caps_ind,
+    f.required_subelement_ind,
+    f.rec_ent_date,
+    f.rec_ent_user,
+    f.rec_mod_date,
+    f.rec_mod_user,
+    f.include_data_onclaim
+FROM hcfa_electronic_fields f
+WHERE f.electronic_rec_guid IN (
+    '30000000-0000-0000-0000-000000000001',
+    '31000000-0000-0000-0000-000000000001',
+    '31000000-0000-0000-0000-000000000002',
+    '31000000-0000-0000-0000-000000000003'
+);
+
 COMMIT;

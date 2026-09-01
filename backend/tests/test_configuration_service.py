@@ -61,6 +61,27 @@ class ProcedureCursor:
         self.closed = True
 
 
+class CurrentProcedureCursor:
+    def __init__(self, result, execute_error=None):
+        self._output = OutVar(result)
+        self.execute_error = execute_error
+        self.binds = None
+        self.execute_count = 0
+        self.closed = False
+
+    def var(self, _type):
+        return self._output
+
+    def execute(self, _statement, **binds):
+        self.execute_count += 1
+        self.binds = binds
+        if self.execute_error is not None:
+            raise self.execute_error
+
+    def close(self):
+        self.closed = True
+
+
 class Connection:
     def __init__(self, cursor):
         self._cursor = cursor
@@ -130,6 +151,31 @@ def request_kwargs(option_code="PROVIDER_TAXONOMY_ON"):
     }
 
 
+def make_current_connection(
+    *,
+    field_number="81",
+    capability="provider-taxonomy",
+    option_code="PROVIDER_TAXONOMY_ON",
+    mode=None,
+    report_address=None,
+    enabled="Y",
+    canonical="Y",
+    execute_error=None,
+):
+    result = ResultCursor(
+        [
+            "STATUS", "FIELD_NUMBER", "CAPABILITY", "EFFECTIVE_OPTION_CODE",
+            "MODE", "REPORT_ADDRESS", "ENABLED", "PFC_GUID", "IS_CANONICAL",
+        ],
+        [[
+            "RESOLVED", field_number, capability, option_code, mode,
+            report_address, enabled,
+            "30000000-0000-0000-0000-0000000000A1", canonical,
+        ]],
+    )
+    return Connection(CurrentProcedureCursor(result, execute_error=execute_error))
+
+
 def test_provider_taxonomy_and_service_facility_are_publicly_advertised():
     fields = ConfigurationService().list_options()["fields"]
 
@@ -143,6 +189,104 @@ def test_provider_taxonomy_and_service_facility_are_publicly_advertised():
     assert [option["option_code"] for option in fields[1]["options"]] == (
         SERVICE_FACILITY_OPTIONS
     )
+
+
+def test_current_provider_is_one_read_only_oracle_call():
+    connection = make_current_connection()
+    service = ConfigurationService(lambda: connection)
+
+    result = service.current(
+        payor_guid=request_kwargs()["payor_guid"],
+        plan_guid=None,
+        field_number="81",
+    )
+
+    assert result == {
+        "status": "RESOLVED",
+        "field_number": "81",
+        "capability": "provider-taxonomy",
+        "effective_option_code": "PROVIDER_TAXONOMY_ON",
+        "display": {"mode": None, "report_address": None, "enabled": True},
+        "pfc_guid": "30000000-0000-0000-0000-0000000000A1",
+        "canonical": True,
+    }
+    assert connection._cursor.execute_count == 1
+    assert connection._cursor.binds == {
+        "payor_guid": request_kwargs()["payor_guid"],
+        "plan_guid": None,
+        "field_number": "81",
+        "result_cursor": connection._cursor._output,
+    }
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+    assert connection.closed
+
+
+def test_current_service_facility_maps_display_without_commit():
+    connection = make_current_connection(
+        field_number="77",
+        capability="service-facility",
+        option_code="SERVICE_FACILITY_CONDITIONAL_ADDRESS_NO",
+        mode="CONDITIONAL",
+        report_address="N",
+        enabled=None,
+        canonical=None,
+    )
+    service = ConfigurationService(lambda: connection)
+
+    result = service.current(
+        payor_guid=request_kwargs()["payor_guid"],
+        plan_guid=None,
+        field_number="77",
+    )
+
+    assert result["effective_option_code"] == "SERVICE_FACILITY_CONDITIONAL_ADDRESS_NO"
+    assert result["display"] == {
+        "mode": "CONDITIONAL",
+        "report_address": "N",
+        "enabled": None,
+    }
+    assert result["canonical"] is None
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+
+
+def test_current_invalid_oracle_result_rolls_back_and_fails_safely():
+    connection = make_current_connection(option_code="PROVIDER_TAXONOMY_OFF", enabled="INVALID")
+    service = ConfigurationService(lambda: connection)
+
+    with pytest.raises(ApiError) as caught:
+        service.current(
+            payor_guid=request_kwargs()["payor_guid"],
+            plan_guid=None,
+            field_number="81",
+        )
+
+    assert caught.value.status_code == 500
+    assert caught.value.category == "application_failure"
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+
+
+def test_current_unsupported_oracle_state_maps_safe_error():
+    details = SimpleNamespace(code=20041, message="ORA-20041 raw mixed state")
+    connection = make_current_connection(
+        execute_error=oracledb.DatabaseError(details),
+    )
+    service = ConfigurationService(lambda: connection)
+
+    with pytest.raises(ApiError) as caught:
+        service.current(
+            payor_guid=request_kwargs()["payor_guid"],
+            plan_guid=None,
+            field_number="81",
+        )
+
+    assert caught.value.status_code == 409
+    assert caught.value.category == "current_state_unsupported"
+    assert "mixed" not in caught.value.message.lower()
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
 
 
 def test_preview_rolls_back_and_never_commits():

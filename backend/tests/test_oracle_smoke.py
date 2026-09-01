@@ -29,6 +29,22 @@ def test_installed_synthetic_oracle_poc_preview():
         assert fields["81"]["field_label"] == "Provider Taxonomy"
         assert fields["77"]["field_label"] == "Service Facility"
 
+        for field_number, expected_option in (
+            ("81", "PROVIDER_TAXONOMY_OFF"),
+            ("77", "SERVICE_FACILITY_NEVER"),
+        ):
+            current = client.post(
+                "/api/config/current",
+                json={
+                    "payor_guid": "10000000-0000-0000-0000-00000000D001",
+                    "plan_guid": None,
+                    "field_number": field_number,
+                },
+            )
+            assert current.status_code == 200
+            assert current.json()["status"] == "RESOLVED"
+            assert current.json()["effective_option_code"] == expected_option
+
         preview = client.post(
             "/api/config/preview",
             json={

@@ -269,6 +269,90 @@ DECLARE
     END get_target_her;
 
 BEGIN
+    /*
+     * UI Demo Payor: fresh inherited OFF/NEVER state with no overrides.
+     * Preview the two intended first UI changes without persisting DML.
+     */
+    SAVEPOINT test_ui_demo_payor;
+    call_option(
+        '10000000-0000-0000-0000-00000000D001',
+        'PROVIDER_TAXONOMY_OFF',
+        'PREVIEW'
+    );
+    assert_text('UI Demo Provider OFF status', l_status, 'NO_CHANGE');
+    assert_text('UI Demo Provider OFF action', l_action_prv, 'NO_CHANGE');
+    assert_text(
+        'UI Demo selected PFC',
+        l_summary_pfc_guid,
+        '20000000-0000-0000-0000-00000000D001'
+    );
+    assert_text(
+        'UI Demo billing form',
+        l_summary_billing_form,
+        '837I_5010'
+    );
+
+    call_option(
+        '10000000-0000-0000-0000-00000000D001',
+        'PROVIDER_TAXONOMY_ON',
+        'PREVIEW'
+    );
+    assert_text('UI Demo Provider ON status', l_status, 'PREVIEW');
+    assert_text(
+        'UI Demo Provider ON action',
+        l_action_prv,
+        'REBUILD_OVERRIDE'
+    );
+
+    call_option(
+        '10000000-0000-0000-0000-00000000D001',
+        'SERVICE_FACILITY_NEVER',
+        'PREVIEW'
+    );
+    assert_text('UI Demo Service NEVER status', l_status, 'NO_CHANGE');
+    assert_text('UI Demo Service NEVER NM1', l_action_nm1, 'NO_CHANGE');
+    assert_text('UI Demo Service NEVER N3', l_action_n3, 'NO_CHANGE');
+    assert_text('UI Demo Service NEVER N4', l_action_n4, 'NO_CHANGE');
+
+    call_option(
+        '10000000-0000-0000-0000-00000000D001',
+        'SERVICE_FACILITY_ALWAYS_ADDRESS_YES',
+        'PREVIEW'
+    );
+    assert_text('UI Demo Service ALWAYS/Y status', l_status, 'PREVIEW');
+    assert_text(
+        'UI Demo Service ALWAYS/Y NM1',
+        l_action_nm1,
+        'REBUILD_OVERRIDE'
+    );
+    assert_text(
+        'UI Demo Service ALWAYS/Y N3',
+        l_action_n3,
+        'REBUILD_OVERRIDE'
+    );
+    assert_text(
+        'UI Demo Service ALWAYS/Y N4',
+        l_action_n4,
+        'REBUILD_OVERRIDE'
+    );
+
+    SELECT COUNT(*)
+    INTO l_number
+    FROM hcfa_electronic_records h
+    WHERE h.payor_guid = '10000000-0000-0000-0000-00000000D001'
+      AND h.billing_form_code = '837I_5010'
+      AND h.record_type_code IN (
+        'B2000A0030PRV080',
+        'D2310E2500NM1343',
+        'D2310E2650N3346',
+        'D2310E2700N4347'
+      );
+    assert_number('UI Demo payor override count', l_number, 0);
+    ROLLBACK TO test_ui_demo_payor;
+    DBMS_OUTPUT.PUT_LINE(
+        'PASS: UI Demo Payor inherited OFF/NEVER and previews rebuilds.'
+    );
+
     /* PAYOR_A: preview and canonical apply from the billing-form source. */
     SAVEPOINT test_payor_a;
     SELECT h.carry_forward_ind, h.include_record_data_onclaim
