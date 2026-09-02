@@ -76,6 +76,10 @@ _OPTION_FIELD_NUMBERS = {
 
 _APPLY_BLOCK = """
 BEGIN
+    pfc_line_of_business.require_defined(
+        p_payor_guid => :payor_guid,
+        p_lock => CASE WHEN :operation_mode = 'APPLY' THEN 'Y' ELSE 'N' END
+    );
     pfc_apply_option(
         p_payor_guid          => :payor_guid,
         p_plan_guid           => :plan_guid,
@@ -91,11 +95,59 @@ END;
 
 _CURRENT_BLOCK = """
 BEGIN
+    pfc_line_of_business.require_defined(
+        p_payor_guid => :payor_guid,
+        p_lock => 'N'
+    );
     pfc_get_current_config(
         p_payor_guid   => :payor_guid,
         p_plan_guid    => :plan_guid,
         p_field_number => :field_number,
         p_result       => :result_cursor
+    );
+END;
+"""
+
+_LOB_CURRENT_BLOCK = """
+BEGIN
+    pfc_line_of_business.get_current(
+        p_payor_guid => :payor_guid,
+        p_result => :result_cursor
+    );
+END;
+"""
+
+_LOB_SAVE_BLOCK = """
+BEGIN
+    pfc_line_of_business.save_initial(
+        p_payor_guid => :payor_guid,
+        p_line_of_business => :line_of_business,
+        p_audit_user => :audit_user,
+        p_result => :result_cursor
+    );
+END;
+"""
+
+_LOB_PREVIEW_BLOCK = """
+BEGIN
+    pfc_line_of_business.preview_change(
+        p_payor_guid => :payor_guid,
+        p_requested_line_of_business => :requested_line_of_business,
+        p_summary => :summary_cursor,
+        p_target_counts => :targets_cursor
+    );
+END;
+"""
+
+_LOB_APPLY_BLOCK = """
+BEGIN
+    pfc_line_of_business.apply_change(
+        p_payor_guid => :payor_guid,
+        p_requested_line_of_business => :requested_line_of_business,
+        p_expected_state_hash => :expected_state_hash,
+        p_audit_user => :audit_user,
+        p_summary => :summary_cursor,
+        p_target_counts => :targets_cursor
     );
 END;
 """
@@ -164,6 +216,193 @@ class ConfigurationService:
         # This is presentation metadata only. Oracle remains authoritative for
         # option existence, validation, target resolution, and desired state.
         return {"fields": OPTION_FIELDS}
+
+    def line_of_business_current(self, *, payor_guid: str) -> dict[str, Any]:
+        return self._run_lob_single(
+            block=_LOB_CURRENT_BLOCK,
+            binds={"payor_guid": payor_guid},
+            operation="current Line of Business",
+            commit=False,
+            expected_status="UNDEFINED",
+        )
+
+    def line_of_business_save(
+        self, *, payor_guid: str, line_of_business: str, audit_user: str
+    ) -> dict[str, Any]:
+        return self._run_lob_single(
+            block=_LOB_SAVE_BLOCK,
+            binds={
+                "payor_guid": payor_guid,
+                "line_of_business": line_of_business,
+                "audit_user": audit_user,
+            },
+            operation="initial Line of Business save",
+            commit=True,
+            expected_status="SAVED",
+        )
+
+    def line_of_business_preview_change(
+        self, *, payor_guid: str, requested_line_of_business: str
+    ) -> dict[str, Any]:
+        return self._run_lob_change(
+            block=_LOB_PREVIEW_BLOCK,
+            binds={
+                "payor_guid": payor_guid,
+                "requested_line_of_business": requested_line_of_business,
+            },
+            operation="Line of Business change preview",
+            commit=False,
+        )
+
+    def line_of_business_apply_change(
+        self,
+        *,
+        payor_guid: str,
+        requested_line_of_business: str,
+        expected_state_hash: str,
+        audit_user: str,
+    ) -> dict[str, Any]:
+        return self._run_lob_change(
+            block=_LOB_APPLY_BLOCK,
+            binds={
+                "payor_guid": payor_guid,
+                "requested_line_of_business": requested_line_of_business,
+                "expected_state_hash": expected_state_hash,
+                "audit_user": audit_user,
+            },
+            operation="Line of Business change apply",
+            commit=True,
+        )
+
+    def _run_lob_single(
+        self,
+        *,
+        block: str,
+        binds: dict[str, Any],
+        operation: str,
+        commit: bool,
+        expected_status: str,
+    ) -> dict[str, Any]:
+        connection = cursor = result_cursor = None
+        try:
+            connection = self._connection_factory()
+            cursor = connection.cursor()
+            result_out = cursor.var(oracledb.DB_TYPE_CURSOR)
+            cursor.execute(block, **binds, result_cursor=result_out)
+            result_cursor = result_out.getvalue()
+            rows = _rows_as_dicts(result_cursor)
+            if len(rows) != 1:
+                raise ApiError(500, "application_failure", "The database returned an invalid Line of Business result.")
+            row = rows[0]
+            status = str(row.get("status"))
+            lob = row.get("line_of_business")
+            valid = (
+                (expected_status == "UNDEFINED" and status in {"UNDEFINED", "DEFINED"})
+                or status == expected_status
+            ) and lob in {None, "HOME_HEALTH", "HOSPICE"}
+            if not valid or (status == "DEFINED" and lob is None) or (status == "SAVED" and lob is None):
+                raise ApiError(500, "application_failure", "The database returned an invalid Line of Business result.")
+            response = {"status": status, "line_of_business": lob}
+            if commit:
+                connection.commit()
+            else:
+                connection.rollback()
+            return response
+        except ApiError:
+            if connection is not None: _rollback_after_error(connection)
+            raise
+        except oracledb.DatabaseError as exc:
+            if connection is not None: _rollback_after_error(connection)
+            raise translate_oracle_error(exc, operation) from None
+        except DatabaseConfigurationError as exc:
+            if connection is not None: _rollback_after_error(connection)
+            raise ApiError(503, "database_failure", "The database connection is not configured.") from exc
+        except Exception as exc:
+            if connection is not None: _rollback_after_error(connection)
+            logger.error("Unexpected LOB adapter failure (%s)", type(exc).__name__)
+            raise ApiError(500, "application_failure", "The Line of Business operation failed safely.") from None
+        finally:
+            if result_cursor is not None: _close_safely(result_cursor, "LOB result cursor")
+            if cursor is not None: _close_safely(cursor, "LOB procedure cursor")
+            if connection is not None: _close_safely(connection, "LOB connection")
+
+    def _run_lob_change(
+        self,
+        *,
+        block: str,
+        binds: dict[str, Any],
+        operation: str,
+        commit: bool,
+    ) -> dict[str, Any]:
+        connection = cursor = summary_cursor = targets_cursor = None
+        try:
+            connection = self._connection_factory()
+            cursor = connection.cursor()
+            summary_out = cursor.var(oracledb.DB_TYPE_CURSOR)
+            targets_out = cursor.var(oracledb.DB_TYPE_CURSOR)
+            cursor.execute(block, **binds, summary_cursor=summary_out, targets_cursor=targets_out)
+            summary_cursor = summary_out.getvalue()
+            targets_cursor = targets_out.getvalue()
+            summaries = _rows_as_dicts(summary_cursor)
+            targets = _rows_as_dicts(targets_cursor)
+            if len(summaries) != 1:
+                raise ApiError(500, "application_failure", "The database returned an invalid Line of Business result.")
+            row = summaries[0]
+            status = str(row.get("status"))
+            allowed = {"APPLIED", "NO_CHANGE"} if commit else {"CHANGES_REQUIRED", "NO_CHANGE"}
+            if status not in allowed or row.get("current_line_of_business") not in {"HOME_HEALTH", "HOSPICE"} or row.get("requested_line_of_business") not in {"HOME_HEALTH", "HOSPICE"}:
+                raise ApiError(500, "application_failure", "The database returned an invalid Line of Business result.")
+            state_hash = str(row.get("preview_state_hash", ""))
+            if len(state_hash) != 64:
+                raise ApiError(500, "application_failure", "The database returned an invalid Line of Business result.")
+            response = {
+                "status": status,
+                "changes_required": row.get("changes_required") == "Y",
+                "current_line_of_business": row["current_line_of_business"],
+                "requested_line_of_business": row["requested_line_of_business"],
+                "managed_target_count": int(row["managed_target_count"]),
+                "affected_managed_target_count": int(row["affected_managed_target_count"]),
+                "managed_her_count": int(row["managed_her_count"]),
+                "managed_hef_count": int(row["managed_hef_count"]),
+                "preview_state_hash": state_hash,
+                "summary": (
+                    "No Line of Business change is required."
+                    if status == "NO_CHANGE"
+                    else f"{int(row['affected_managed_target_count'])} customized claim-field component(s) will be reset."
+                    if status == "CHANGES_REQUIRED"
+                    else "Line of Business changed and managed claim-field customizations were reset."
+                ),
+                "debug_targets": [
+                    {
+                        "billing_form_code": str(target["billing_form_code"]),
+                        "record_type_code": str(target["record_type_code"]),
+                        "her_count": int(target["her_count"]),
+                        "hef_count": int(target["hef_count"]),
+                    }
+                    for target in targets
+                ],
+            }
+            if commit: connection.commit()
+            else: connection.rollback()
+            return response
+        except ApiError:
+            if connection is not None: _rollback_after_error(connection)
+            raise
+        except oracledb.DatabaseError as exc:
+            if connection is not None: _rollback_after_error(connection)
+            raise translate_oracle_error(exc, operation) from None
+        except DatabaseConfigurationError as exc:
+            if connection is not None: _rollback_after_error(connection)
+            raise ApiError(503, "database_failure", "The database connection is not configured.") from exc
+        except Exception as exc:
+            if connection is not None: _rollback_after_error(connection)
+            logger.error("Unexpected LOB change adapter failure (%s)", type(exc).__name__)
+            raise ApiError(500, "application_failure", "The Line of Business operation failed safely.") from None
+        finally:
+            if targets_cursor is not None: _close_safely(targets_cursor, "LOB target cursor")
+            if summary_cursor is not None: _close_safely(summary_cursor, "LOB summary cursor")
+            if cursor is not None: _close_safely(cursor, "LOB procedure cursor")
+            if connection is not None: _close_safely(connection, "LOB connection")
 
     def preview(
         self,

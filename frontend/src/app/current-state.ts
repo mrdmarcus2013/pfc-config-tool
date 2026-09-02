@@ -82,6 +82,11 @@ export class CurrentConfigurationCache {
     this.values.delete(key);
     this.pending.delete(key);
   }
+
+  clear(): void {
+    this.values.clear();
+    this.pending.clear();
+  }
 }
 
 export const currentConfigurationCache = new CurrentConfigurationCache();

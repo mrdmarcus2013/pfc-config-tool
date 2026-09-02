@@ -4,4 +4,5 @@ WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK
 @@test_04_option_definitions.sql
 @@test_05_current_config.sql
 @@test_03_apply_option.sql
-PROMPT All synthetic diagnostic, resolver, option-definition, and apply tests passed.
+@@test_06_line_of_business.sql
+PROMPT All synthetic diagnostic, resolver, option, apply, and LOB tests passed.

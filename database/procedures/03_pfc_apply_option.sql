@@ -373,6 +373,7 @@ IS
         l_test_hard        pfc_option_types.t_value_text;
     BEGIN
         IF l_option.targets(p_target_index).target_code IS NULL
+           OR l_option.targets(p_target_index).billing_form_code IS NULL
            OR l_option.targets(p_target_index).record_type_code IS NULL THEN
             RAISE_APPLICATION_ERROR(c_err_invalid_option,
                 'An option target is incomplete.');
@@ -993,6 +994,8 @@ IS
 
         FOR i IN 1 .. l_targets.COUNT LOOP
             append_state(l_targets(i).target_code);
+            append_state(l_option.targets(l_targets(i).option_index)
+                .billing_form_code);
             append_state(l_targets(i).record_type_code);
             append_state(l_targets(i).target_action);
             append_state(l_targets(i).source_guid);

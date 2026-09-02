@@ -56,6 +56,37 @@ test("Service Facility preview and apply each make one request and forward the h
   assert.equal(calls[1].body.option_code, "SERVICE_FACILITY_ALWAYS_ADDRESS_YES");
 });
 
+test("Line of Business uses payor-level current/save and exact preview hash apply", async () => {
+  const calls = [];
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, body: JSON.parse(init.body) });
+    return jsonResponse(path.endsWith("current")
+      ? { status: "UNDEFINED", line_of_business: null }
+      : { status: "SAVED", line_of_business: "HOME_HEALTH" });
+  };
+  await apiClient.lineOfBusinessCurrent({ payor_guid: "synthetic-payor" });
+  await apiClient.lineOfBusinessSave({
+    payor_guid: "synthetic-payor", line_of_business: "HOME_HEALTH", audit_user: "synthetic-audit",
+  });
+  await apiClient.lineOfBusinessPreviewChange({
+    payor_guid: "synthetic-payor", requested_line_of_business: "HOSPICE",
+  });
+  await apiClient.lineOfBusinessApplyChange({
+    payor_guid: "synthetic-payor", requested_line_of_business: "HOSPICE",
+    expected_state_hash: "C".repeat(64), audit_user: "synthetic-audit",
+  });
+  assert.deepEqual(calls.map((call) => call.path), [
+    "/api/config/line-of-business/current",
+    "/api/config/line-of-business/save",
+    "/api/config/line-of-business/preview-change",
+    "/api/config/line-of-business/apply-change",
+  ]);
+  assert.deepEqual(calls[0].body, { payor_guid: "synthetic-payor" });
+  assert.equal(calls[3].body.expected_state_hash, "C".repeat(64));
+  assert.equal("plan_guid" in calls[3].body, false);
+  assert.equal("pfc_guid" in calls[3].body, false);
+});
+
 test("metadata failure and backend unavailability are safe", async () => {
   globalThis.fetch = async () => jsonResponse({ error: { category: "stale_preview", message: "ORA-20504 raw text" } }, 409);
   await assert.rejects(apiClient.options(), (error) => error instanceof ApiClientError && error.category === "stale_preview");

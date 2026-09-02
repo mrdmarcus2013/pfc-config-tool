@@ -30,6 +30,12 @@ is supplied by the development launch context and remains internal, never shown
 or editable. Oracle continues to resolve the PFC using `payor_guid` and nullable
 `plan_guid`; the display-context `pfc_guid` is never sent as a target.
 
+The UI Demo Payor starts with Line of Business undefined. Home Health or
+Hospice must be saved before Fields 77 and 81 can be opened. A later Line of
+Business change uses a warning, read-only reset preview, and final confirmation.
+Successful reset closes the field editor and clears cached field state so the
+next opening performs a fresh Oracle read.
+
 MatrixCare host integration is future work. A host launch is expected to supply
 `payor_guid`, nullable `plan_guid`, `pfc_guid`, and the authenticated audit-user
 context. The MatrixCare Template-button entry point is not implemented in this

@@ -18,6 +18,11 @@ ACTION_SCRIPTS = {
     "install": [DATABASE_DIR / "install" / "install_all.sql"],
     "prep3": [DATABASE_DIR / "install" / "005_prep_script_3.sql"],
     "install3": [DATABASE_DIR / "install" / "005_script_3.sql"],
+    "install_lob": [
+        DATABASE_DIR / "install" / "003_option_layer.sql",
+        DATABASE_DIR / "install" / "005_script_3.sql",
+        DATABASE_DIR / "install" / "006_line_of_business.sql",
+    ],
     "test": [DATABASE_DIR / "tests" / "run_all.sql"],
     "test3": [DATABASE_DIR / "tests" / "test_03_apply_option.sql"],
     "reset": [

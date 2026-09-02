@@ -29,6 +29,22 @@ def test_installed_synthetic_oracle_poc_preview():
         assert fields["81"]["field_label"] == "Provider Taxonomy"
         assert fields["77"]["field_label"] == "Service Facility"
 
+        undefined_lob = client.post(
+            "/api/config/line-of-business/current",
+            json={"payor_guid": "10000000-0000-0000-0000-00000000D001"},
+        )
+        assert undefined_lob.status_code == 200
+        assert undefined_lob.json() == {
+            "status": "UNDEFINED", "line_of_business": None,
+        }
+
+        defined_lob = client.post(
+            "/api/config/line-of-business/current",
+            json={"payor_guid": "10000000-0000-0000-0000-00000000D002"},
+        )
+        assert defined_lob.status_code == 200
+        assert defined_lob.json()["line_of_business"] == "HOME_HEALTH"
+
         for field_number, expected_option in (
             ("81", "PROVIDER_TAXONOMY_OFF"),
             ("77", "SERVICE_FACILITY_NEVER"),
@@ -36,7 +52,7 @@ def test_installed_synthetic_oracle_poc_preview():
             current = client.post(
                 "/api/config/current",
                 json={
-                    "payor_guid": "10000000-0000-0000-0000-00000000D001",
+                    "payor_guid": "10000000-0000-0000-0000-00000000D002",
                     "plan_guid": None,
                     "field_number": field_number,
                 },
@@ -48,7 +64,7 @@ def test_installed_synthetic_oracle_poc_preview():
         preview = client.post(
             "/api/config/preview",
             json={
-                "payor_guid": "10000000-0000-0000-0000-0000000000A1",
+                "payor_guid": "10000000-0000-0000-0000-00000000D002",
                 "plan_guid": None,
                 "option_code": "PROVIDER_TAXONOMY_ON",
                 "audit_user": "90000000-0000-0000-0000-000000000003",
@@ -61,7 +77,7 @@ def test_installed_synthetic_oracle_poc_preview():
         service_facility_preview = client.post(
             "/api/config/preview",
             json={
-                "payor_guid": "10000000-0000-0000-0000-0000000000A1",
+                "payor_guid": "10000000-0000-0000-0000-00000000D002",
                 "plan_guid": None,
                 "option_code": "SERVICE_FACILITY_ALWAYS_ADDRESS_YES",
                 "audit_user": "90000000-0000-0000-0000-000000000003",

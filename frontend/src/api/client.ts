@@ -4,6 +4,13 @@ import type {
   ConfigurationResponse,
   CurrentConfigurationRequest,
   CurrentConfigurationResponse,
+  LineOfBusinessApplyRequest,
+  LineOfBusinessChangeResponse,
+  LineOfBusinessCurrentRequest,
+  LineOfBusinessCurrentResponse,
+  LineOfBusinessPreviewRequest,
+  LineOfBusinessSaveRequest,
+  LineOfBusinessSaveResponse,
   OptionsResponse,
   PreviewRequest,
 } from "./types";
@@ -55,4 +62,12 @@ export const apiClient = {
     request<ConfigurationResponse>("/api/config/preview", post(body)),
   apply: (body: ApplyRequest) =>
     request<ConfigurationResponse>("/api/config/apply", post(body)),
+  lineOfBusinessCurrent: (body: LineOfBusinessCurrentRequest) =>
+    request<LineOfBusinessCurrentResponse>("/api/config/line-of-business/current", post(body)),
+  lineOfBusinessSave: (body: LineOfBusinessSaveRequest) =>
+    request<LineOfBusinessSaveResponse>("/api/config/line-of-business/save", post(body)),
+  lineOfBusinessPreviewChange: (body: LineOfBusinessPreviewRequest) =>
+    request<LineOfBusinessChangeResponse>("/api/config/line-of-business/preview-change", post(body)),
+  lineOfBusinessApplyChange: (body: LineOfBusinessApplyRequest) =>
+    request<LineOfBusinessChangeResponse>("/api/config/line-of-business/apply-change", post(body)),
 };

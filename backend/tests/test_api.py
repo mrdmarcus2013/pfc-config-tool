@@ -63,6 +63,34 @@ class StubService:
     def apply(self, **request):
         return self._result("APPLIED", request)
 
+    def line_of_business_current(self, **request):
+        return {"status": "UNDEFINED", "line_of_business": None}
+
+    def line_of_business_save(self, **request):
+        return {"status": "SAVED", "line_of_business": request["line_of_business"]}
+
+    def line_of_business_preview_change(self, **request):
+        return self._lob_change("CHANGES_REQUIRED", request)
+
+    def line_of_business_apply_change(self, **request):
+        return self._lob_change("APPLIED", request)
+
+    @staticmethod
+    def _lob_change(status, request):
+        return {
+            "status": status,
+            "changes_required": status != "NO_CHANGE",
+            "current_line_of_business": "HOME_HEALTH",
+            "requested_line_of_business": request["requested_line_of_business"],
+            "managed_target_count": 4,
+            "affected_managed_target_count": 2,
+            "managed_her_count": 3,
+            "managed_hef_count": 9,
+            "preview_state_hash": HASH,
+            "summary": "2 customized claim-field components will be reset.",
+            "debug_targets": [],
+        }
+
     @staticmethod
     def _result(status, request):
         is_service_facility = request["option_code"].startswith("SERVICE_FACILITY_")
@@ -108,6 +136,47 @@ def test_health_reports_application_and_oracle(client):
 
     assert response.status_code == 200
     assert response.json() == {"application": "ok", "oracle": "connected"}
+
+
+def test_line_of_business_endpoints_have_typed_payor_level_contracts(client):
+    payor = BASE_REQUEST["payor_guid"]
+    current = client.post("/api/config/line-of-business/current", json={"payor_guid": payor})
+    assert current.status_code == 200
+    assert current.json() == {"status": "UNDEFINED", "line_of_business": None}
+
+    saved = client.post("/api/config/line-of-business/save", json={
+        "payor_guid": payor,
+        "line_of_business": "HOME_HEALTH",
+        "audit_user": BASE_REQUEST["audit_user"],
+    })
+    assert saved.status_code == 200
+    assert saved.json()["line_of_business"] == "HOME_HEALTH"
+
+    preview = client.post("/api/config/line-of-business/preview-change", json={
+        "payor_guid": payor, "requested_line_of_business": "HOSPICE",
+    })
+    assert preview.status_code == 200
+    assert preview.json()["preview_state_hash"] == HASH
+    assert preview.json()["affected_managed_target_count"] == 2
+
+    applied = client.post("/api/config/line-of-business/apply-change", json={
+        "payor_guid": payor,
+        "requested_line_of_business": "HOSPICE",
+        "expected_state_hash": HASH,
+        "audit_user": BASE_REQUEST["audit_user"],
+    })
+    assert applied.status_code == 200
+    assert applied.json()["status"] == "APPLIED"
+
+
+@pytest.mark.parametrize("path,payload", [
+    ("/api/config/line-of-business/save", {"line_of_business": "MEDICARE", "audit_user": BASE_REQUEST["audit_user"]}),
+    ("/api/config/line-of-business/preview-change", {"requested_line_of_business": "MEDICARE"}),
+    ("/api/config/line-of-business/apply-change", {"requested_line_of_business": "MEDICARE", "expected_state_hash": HASH, "audit_user": BASE_REQUEST["audit_user"]}),
+])
+def test_line_of_business_rejects_arbitrary_values(client, path, payload):
+    response = client.post(path, json={"payor_guid": BASE_REQUEST["payor_guid"], **payload})
+    assert response.status_code == 422
 
 
 def test_options_are_grouped_and_hide_database_details(client):

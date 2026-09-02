@@ -406,3 +406,134 @@ def test_stale_apply_rolls_back_and_maps_error():
     assert connection.rollbacks == 1
     assert connection.closed
     assert connection._cursor.execute_count == 1
+
+
+def make_lob_change_connection(status="CHANGES_REQUIRED", execute_error=None):
+    summary = ResultCursor(
+        [
+            "STATUS", "CHANGES_REQUIRED", "CURRENT_LINE_OF_BUSINESS",
+            "REQUESTED_LINE_OF_BUSINESS", "MANAGED_TARGET_COUNT",
+            "AFFECTED_MANAGED_TARGET_COUNT", "MANAGED_HER_COUNT",
+            "MANAGED_HEF_COUNT", "PREVIEW_STATE_HASH",
+        ],
+        [[status, "N" if status == "NO_CHANGE" else "Y", "HOME_HEALTH",
+          "HOSPICE", 4, 2, 3, 9, HASH]],
+    )
+    targets = ResultCursor(
+        ["TARGET_ORDER", "BILLING_FORM_CODE", "RECORD_TYPE_CODE", "HER_COUNT", "HEF_COUNT"],
+        [[1, "837I_5010", "B2000A0030PRV080", 1, 4]],
+    )
+    return Connection(ProcedureCursor(summary, targets, execute_error=execute_error))
+
+
+def test_lob_current_is_payor_only_read_and_rolls_back():
+    result = ResultCursor(["STATUS", "LINE_OF_BUSINESS"], [["UNDEFINED", None]])
+    connection = Connection(CurrentProcedureCursor(result))
+    service = ConfigurationService(lambda: connection)
+
+    response = service.line_of_business_current(payor_guid=request_kwargs()["payor_guid"])
+
+    assert response == {"status": "UNDEFINED", "line_of_business": None}
+    assert connection._cursor.binds == {
+        "payor_guid": request_kwargs()["payor_guid"],
+        "result_cursor": connection._cursor._output,
+    }
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+
+
+def test_lob_initial_save_commits_only_after_success():
+    result = ResultCursor(["STATUS", "LINE_OF_BUSINESS"], [["SAVED", "HOME_HEALTH"]])
+    connection = Connection(CurrentProcedureCursor(result))
+    service = ConfigurationService(lambda: connection)
+
+    response = service.line_of_business_save(
+        payor_guid=request_kwargs()["payor_guid"],
+        line_of_business="HOME_HEALTH",
+        audit_user=request_kwargs()["audit_user"],
+    )
+
+    assert response["status"] == "SAVED"
+    assert connection.commits == 1
+    assert connection.rollbacks == 0
+
+
+def test_lob_change_preview_rolls_back_and_retains_technical_counts():
+    connection = make_lob_change_connection()
+    service = ConfigurationService(lambda: connection)
+
+    response = service.line_of_business_preview_change(
+        payor_guid=request_kwargs()["payor_guid"],
+        requested_line_of_business="HOSPICE",
+    )
+
+    assert response["status"] == "CHANGES_REQUIRED"
+    assert response["preview_state_hash"] == HASH
+    assert response["managed_target_count"] == 4
+    assert response["debug_targets"][0]["record_type_code"] == "B2000A0030PRV080"
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+
+
+def test_lob_change_apply_forwards_exact_hash_and_commits():
+    connection = make_lob_change_connection(status="APPLIED")
+    service = ConfigurationService(lambda: connection)
+
+    response = service.line_of_business_apply_change(
+        payor_guid=request_kwargs()["payor_guid"],
+        requested_line_of_business="HOSPICE",
+        expected_state_hash=HASH,
+        audit_user=request_kwargs()["audit_user"],
+    )
+
+    assert response["status"] == "APPLIED"
+    assert connection._cursor.binds["expected_state_hash"] == HASH
+    assert connection.commits == 1
+    assert connection.rollbacks == 0
+
+
+@pytest.mark.parametrize(
+    ("operation", "oracle_code", "category"),
+    [
+        ("save", 20052, "line_of_business_already_saved"),
+        ("apply", 20055, "stale_preview"),
+    ],
+)
+def test_lob_write_failures_roll_back_and_map_safely(operation, oracle_code, category):
+    details = SimpleNamespace(code=oracle_code, message="ORA raw implementation detail")
+    if operation == "save":
+        result = ResultCursor(["STATUS", "LINE_OF_BUSINESS"], [])
+        connection = Connection(CurrentProcedureCursor(result, oracledb.DatabaseError(details)))
+        call = lambda service: service.line_of_business_save(
+            payor_guid=request_kwargs()["payor_guid"], line_of_business="HOME_HEALTH",
+            audit_user=request_kwargs()["audit_user"])
+    else:
+        connection = make_lob_change_connection(execute_error=oracledb.DatabaseError(details))
+        call = lambda service: service.line_of_business_apply_change(
+            payor_guid=request_kwargs()["payor_guid"], requested_line_of_business="HOSPICE",
+            expected_state_hash=HASH, audit_user=request_kwargs()["audit_user"])
+    with pytest.raises(ApiError) as caught:
+        call(ConfigurationService(lambda: connection))
+    assert caught.value.category == category
+    assert "oracle" not in caught.value.message.lower()
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+
+
+@pytest.mark.parametrize("operation", ["current", "preview", "apply"])
+def test_public_field_operations_require_saved_lob(operation):
+    details = SimpleNamespace(code=20053, message="raw LOB gate detail")
+    if operation == "current":
+        connection = make_current_connection(execute_error=oracledb.DatabaseError(details))
+        call = lambda service: service.current(
+            payor_guid=request_kwargs()["payor_guid"], plan_guid=None, field_number="81")
+    else:
+        connection = make_connection(execute_error=oracledb.DatabaseError(details))
+        call = lambda service: getattr(service, operation)(
+            **request_kwargs(), **({"expected_state_hash": HASH} if operation == "apply" else {}))
+    with pytest.raises(ApiError) as caught:
+        call(ConfigurationService(lambda: connection))
+    assert caught.value.status_code == 409
+    assert caught.value.category == "line_of_business_required"
+    assert connection.commits == 0
+    assert connection.rollbacks == 1

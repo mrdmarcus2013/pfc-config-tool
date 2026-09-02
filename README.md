@@ -43,6 +43,17 @@ The initial API surface is:
 - `POST /api/config/current`
 - `POST /api/config/preview`
 - `POST /api/config/apply`
+- `POST /api/config/line-of-business/current`
+- `POST /api/config/line-of-business/save`
+- `POST /api/config/line-of-business/preview-change`
+- `POST /api/config/line-of-business/apply-change`
+
+Line of Business is stored once per payor as `HOME_HEALTH` or `HOSPICE`.
+Claim-field current, preview, and apply operations are unavailable until the
+payor has a saved value. First-time assignment preserves existing overrides.
+Changing a saved value requires Preview then Apply and atomically removes every
+payor-specific override in the authoritative managed-target registry across all
+plans; unregistered configuration targets are not changed.
 
 The API accepts these public option codes:
 

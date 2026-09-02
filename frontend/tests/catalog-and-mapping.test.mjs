@@ -183,4 +183,8 @@ test("current configuration cache keys by context, coalesces loads, and invalida
   assert.equal(calls, 2);
   await cache.load(request, loader, true);
   assert.equal(calls, 3);
+
+  cache.clear();
+  await cache.load(request, loader);
+  assert.equal(calls, 4);
 });

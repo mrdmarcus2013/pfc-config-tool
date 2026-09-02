@@ -57,10 +57,13 @@ BEGIN
     l_option.phys_form_field_num := '77';
 
     l_option.targets(1).target_code := 'NM1';
+    l_option.targets(1).billing_form_code := '837I_5010';
     l_option.targets(1).record_type_code := 'D2310E2500NM1343';
     l_option.targets(2).target_code := 'N3';
+    l_option.targets(2).billing_form_code := '837I_5010';
     l_option.targets(2).record_type_code := 'D2310E2650N3346';
     l_option.targets(3).target_code := 'N4';
+    l_option.targets(3).billing_form_code := '837I_5010';
     l_option.targets(3).record_type_code := 'D2310E2700N4347';
 
     CASE p_option_code

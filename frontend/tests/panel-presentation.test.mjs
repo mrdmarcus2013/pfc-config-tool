@@ -1,12 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PreviewResult } from "../.test-build/app/preview-result.js";
 import {
-  fieldEditorTitle, supportPreviewPresentation, technicalDetailsEnabled,
+  SUPPORT_DEVELOPER_MODE, technicalDetailsEnabled, technicalDetailsEnabledFromEnvironment,
+} from "../.test-build/app/environment.js";
+import {
+  fieldEditorTitle, supportPreviewPresentation,
 } from "../.test-build/app/presentation.js";
 import { CLAIM_FIELD_CATALOG } from "../.test-build/data/claim-field-catalog.js";
+
+const frontendRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const previewResponse = (overrides = {}) => ({
   status: "PREVIEW",
@@ -38,6 +46,29 @@ test("technical details default off and can be enabled only by the support flag"
   assert.equal(technicalDetailsEnabled("false"), false);
   assert.equal(technicalDetailsEnabled("true"), true);
   assert.equal(technicalDetailsEnabled("TRUE"), true);
+});
+
+test("missing environment object and optional flag safely default to disabled", () => {
+  assert.equal(technicalDetailsEnabledFromEnvironment(undefined), false);
+  assert.equal(technicalDetailsEnabledFromEnvironment({}), false);
+  assert.equal(technicalDetailsEnabledFromEnvironment({ VITE_ENABLE_TECHNICAL_DETAILS: undefined }), false);
+  assert.equal(technicalDetailsEnabledFromEnvironment({ VITE_ENABLE_TECHNICAL_DETAILS: "" }), false);
+  assert.equal(technicalDetailsEnabledFromEnvironment({ VITE_ENABLE_TECHNICAL_DETAILS: "false" }), false);
+  assert.equal(technicalDetailsEnabledFromEnvironment({ VITE_ENABLE_TECHNICAL_DETAILS: "anything-else" }), false);
+  assert.equal(SUPPORT_DEVELOPER_MODE, false);
+});
+
+test("explicit Vite true value enables Tier-2 diagnostics", () => {
+  assert.equal(technicalDetailsEnabledFromEnvironment({
+    VITE_ENABLE_TECHNICAL_DETAILS: "true",
+  }), true);
+});
+
+test("normal application startup does not directly dereference import.meta.env", () => {
+  const source = readFileSync(join(frontendRoot, "src", "App.tsx"), "utf8");
+  assert.doesNotMatch(source, /import\.meta\.env/);
+  assert.match(source, /SUPPORT_DEVELOPER_MODE/);
+  assert.equal(SUPPORT_DEVELOPER_MODE, false);
 });
 
 test("normal preview hides diagnostics while support mode renders retained technical data", () => {

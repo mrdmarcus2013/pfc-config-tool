@@ -20,6 +20,21 @@ CREATE TABLE payors (
     CONSTRAINT pk_payors PRIMARY KEY (payor_guid)
 );
 
+CREATE TABLE pfc_config_payor_context (
+    payor_guid       VARCHAR2(36) NOT NULL,
+    line_of_business VARCHAR2(20) NOT NULL,
+    rec_ent_date     DATE         NOT NULL,
+    rec_ent_user     VARCHAR2(36) NOT NULL,
+    rec_mod_date     DATE,
+    rec_mod_user     VARCHAR2(36),
+    CONSTRAINT pk_pfc_config_payor_context PRIMARY KEY (payor_guid),
+    CONSTRAINT fk_pfc_config_context_payor FOREIGN KEY (payor_guid)
+        REFERENCES payors (payor_guid),
+    CONSTRAINT ck_pfc_config_context_lob CHECK (
+        line_of_business IN ('HOME_HEALTH', 'HOSPICE')
+    )
+);
+
 CREATE TABLE pfc (
     pfc_guid                VARCHAR2(36) NOT NULL,
     payor_guid              VARCHAR2(36),

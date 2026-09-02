@@ -8,6 +8,11 @@ DECLARE
     l_sto_value        pfc_option_types.t_value_text;
     l_hard_value       pfc_option_types.t_value_text;
     l_conflict_rejected BOOLEAN;
+    l_managed_targets  pfc_option_registry.t_managed_targets;
+    l_provider_count   PLS_INTEGER := 0;
+    l_nm1_count        PLS_INTEGER := 0;
+    l_n3_count         PLS_INTEGER := 0;
+    l_n4_count         PLS_INTEGER := 0;
 
     PROCEDURE assert_text (
         p_label    IN VARCHAR2,
@@ -290,6 +295,8 @@ BEGIN
         'Provider record type', l_option.targets(1).record_type_code,
         'B2000A0030PRV080'
     );
+    assert_text('Provider billing form',
+        l_option.targets(1).billing_form_code, '837I_5010');
     assert_text(
         'Provider HEF selector attribute',
         l_option.targets(1).hef_requirements(1).selector_terms(1).attribute_code,
@@ -354,8 +361,31 @@ BEGIN
         'RETURN_0', 'RETURN_0', 'RETURN_0', 0, 0, 0
     );
 
+    pfc_option_registry.get_managed_targets(l_managed_targets);
+    IF l_managed_targets.COUNT <> 4 THEN
+        RAISE_APPLICATION_ERROR(-20965,
+            'Managed targets were not deduplicated across option definitions.');
+    END IF;
+    FOR i IN 1 .. l_managed_targets.COUNT LOOP
+        assert_text('Managed target billing form ' || i,
+            l_managed_targets(i).billing_form_code, '837I_5010');
+        CASE l_managed_targets(i).record_type_code
+            WHEN 'B2000A0030PRV080' THEN l_provider_count := l_provider_count + 1;
+            WHEN 'D2310E2500NM1343' THEN l_nm1_count := l_nm1_count + 1;
+            WHEN 'D2310E2650N3346' THEN l_n3_count := l_n3_count + 1;
+            WHEN 'D2310E2700N4347' THEN l_n4_count := l_n4_count + 1;
+            ELSE RAISE_APPLICATION_ERROR(-20966,
+                'Unexpected managed target was registered.');
+        END CASE;
+    END LOOP;
+    IF l_provider_count <> 1 OR l_nm1_count <> 1 OR
+       l_n3_count <> 1 OR l_n4_count <> 1 THEN
+        RAISE_APPLICATION_ERROR(-20967,
+            'The authoritative managed target set is incomplete.');
+    END IF;
+
     DBMS_OUTPUT.PUT_LINE(
-        'PASS: HEF replacement semantics and option definitions are valid.'
+        'PASS: option definitions and deduplicated managed targets are valid.'
     );
 END;
 /

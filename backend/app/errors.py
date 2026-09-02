@@ -41,6 +41,14 @@ _ORACLE_ERROR_MAP: dict[int, tuple[int, str, str]] = {
     20040: (500, "application_failure", "The configuration operation failed safely."),
     20041: (409, "current_state_unsupported", "The current effective configuration is inconsistent or unsupported."),
     20042: (422, "unsupported_field", "Current configuration is not available for that field."),
+    20050: (404, "payor_not_found", "The requested payor was not found."),
+    20051: (400, "invalid_request", "Select Home Health or Hospice."),
+    20052: (409, "line_of_business_already_saved", "Line of Business is already saved for this payor."),
+    20053: (409, "line_of_business_required", "Line of Business must be saved before claim fields can be configured."),
+    20054: (400, "invalid_request", "Preview the Line of Business change before applying it."),
+    20055: (409, "stale_preview", "The reset preview is stale. Preview the Line of Business change again."),
+    20056: (500, "verification_failure", "The Line of Business change could not be verified and was rolled back."),
+    20057: (500, "application_failure", "The Line of Business operation failed safely."),
 }
 
 

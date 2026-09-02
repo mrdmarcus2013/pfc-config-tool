@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "./api/client";
 import type {
-  ConfigurationResponse, CurrentConfigurationResponse, OptionField,
+  ConfigurationResponse, CurrentConfigurationResponse, LineOfBusiness,
+  LineOfBusinessChangeResponse, LineOfBusinessCurrentResponse, OptionField,
 } from "./api/types";
 import {
   currentConfigurationCache, currentConfigurationRequest, currentOptionDiffers,
@@ -12,10 +13,15 @@ import {
   editorActionState, previewAllowsApply, previewIdentity, previewRequest, providerTaxonomyOption,
   safeError, serviceFacilityOption, SingleFlightGate,
 } from "./app/workflow";
+import {
+  fieldsUnlocked, lineOfBusinessLabel, lobApplyRequest,
+  lobPreviewAfterError, otherLineOfBusiness,
+} from "./app/line-of-business";
 import { EditorFooter } from "./app/editor-footer";
 import {
-  fieldEditorTitle, technicalDetailsEnabled,
+  fieldEditorTitle,
 } from "./app/presentation";
+import { SUPPORT_DEVELOPER_MODE } from "./app/environment";
 import { PreviewResult } from "./app/preview-result";
 import { CLAIM_FIELD_CATALOG } from "./data/claim-field-catalog";
 import type {
@@ -94,10 +100,6 @@ const CLAIM_SECTION_LAYOUT: readonly ClaimSectionDefinition[] = [
 
 const baseFieldNumber = (field: ClaimFieldCatalogEntry) =>
   Number.parseInt(field.fieldNumber, 10);
-
-const SUPPORT_DEVELOPER_MODE = technicalDetailsEnabled(
-  import.meta.env.VITE_ENABLE_TECHNICAL_DETAILS,
-);
 
 const SERVICE_MODE_LABEL: Record<ServiceFacilityMode, string> = {
   always: "Always report service facility",
@@ -366,12 +368,132 @@ function FieldEditor({ field, context, onClose, supportDeveloperMode }: FieldEdi
   );
 }
 
+interface LineOfBusinessControlProps {
+  current: LineOfBusinessCurrentResponse | null;
+  loading: boolean;
+  onChanged: (lineOfBusiness: LineOfBusiness, message: string) => void;
+  onChangeStarted: () => void;
+}
+
+function LineOfBusinessControl({ current, loading, onChanged, onChangeStarted }: LineOfBusinessControlProps) {
+  const saved = current?.line_of_business ?? null;
+  const [selection, setSelection] = useState<LineOfBusiness | null>(null);
+  const [stage, setStage] = useState<"warning" | "confirm" | null>(null);
+  const [preview, setPreview] = useState<LineOfBusinessChangeResponse | null>(null);
+  const [busy, setBusy] = useState<"save" | "preview" | "apply" | null>(null);
+  const [error, setError] = useState<{ category: string; message: string } | null>(null);
+  const requestGate = useRef(new SingleFlightGate());
+
+  useEffect(() => { if (saved) setSelection(saved); }, [saved]);
+
+  const saveInitial = async () => {
+    if (!selection || saved || !requestGate.current.tryEnter()) return;
+    setBusy("save"); setError(null);
+    try {
+      const response = await apiClient.lineOfBusinessSave({
+        payor_guid: UI_DEMO_LAUNCH_CONTEXT.payor_guid,
+        line_of_business: selection,
+        audit_user: UI_DEMO_LAUNCH_CONTEXT.audit_user,
+      });
+      currentConfigurationCache.clear();
+      onChanged(response.line_of_business, `${lineOfBusinessLabel(response.line_of_business)} was saved.`);
+    } catch (caught) { setError(safeError(caught)); }
+    finally { setBusy(null); requestGate.current.exit(); }
+  };
+
+  const beginChange = () => {
+    if (!saved) return;
+    onChangeStarted();
+    setSelection(otherLineOfBusiness(saved));
+    setPreview(null); setError(null); setStage("warning");
+  };
+
+  const runChangePreview = async () => {
+    if (!saved || !selection || selection === saved || !requestGate.current.tryEnter()) return;
+    setBusy("preview"); setError(null);
+    try {
+      const response = await apiClient.lineOfBusinessPreviewChange({
+        payor_guid: UI_DEMO_LAUNCH_CONTEXT.payor_guid,
+        requested_line_of_business: selection,
+      });
+      setPreview(response);
+      setStage(response.status === "NO_CHANGE" ? null : "confirm");
+    } catch (caught) { setError(safeError(caught)); }
+    finally { setBusy(null); requestGate.current.exit(); }
+  };
+
+  const applyChange = async () => {
+    if (!preview || preview.status !== "CHANGES_REQUIRED" || !requestGate.current.tryEnter()) return;
+    setBusy("apply"); setError(null);
+    try {
+      const response = await apiClient.lineOfBusinessApplyChange(
+        lobApplyRequest(UI_DEMO_LAUNCH_CONTEXT, preview),
+      );
+      currentConfigurationCache.clear();
+      setPreview(null); setStage(null);
+      onChanged(response.requested_line_of_business,
+        `Line of Business changed to ${lineOfBusinessLabel(response.requested_line_of_business)}. Managed claim-field customizations were reset for all plans.`);
+    } catch (caught) {
+      const safe = safeError(caught);
+      setPreview((value) => lobPreviewAfterError(value, safe.category));
+      setError(safe);
+      if (safe.category === "stale_preview") setStage("warning");
+    } finally { setBusy(null); requestGate.current.exit(); }
+  };
+
+  return (
+    <section className="lob-card" aria-labelledby="lob-heading">
+      <div className="lob-heading-row">
+        <div><span className="eyebrow">Payor-level setting</span><h2 id="lob-heading">Line of Business</h2></div>
+        {saved && <button type="button" className="secondary-button" onClick={beginChange}>Change Line of Business</button>}
+      </div>
+      {loading && <p className="lob-status" role="status">Loading Line of Business…</p>}
+      {!loading && current && <>
+        <fieldset className="lob-choices" disabled={saved !== null || busy !== null}>
+          {(["HOME_HEALTH", "HOSPICE"] as LineOfBusiness[]).map((value) => <label className="choice compact" key={value}>
+            <input type="radio" name="line-of-business" checked={(saved ?? selection) === value} onChange={() => setSelection(value)} />
+            <span>{lineOfBusinessLabel(value)}</span>
+          </label>)}
+        </fieldset>
+        {!saved && <button type="button" className="primary-button" disabled={!selection || busy !== null} onClick={saveInitial}>{busy === "save" ? "Saving…" : "Save Line of Business"}</button>}
+        {saved && <p className="lob-status">Saved for this payor. Every plan uses {lineOfBusinessLabel(saved)}.</p>}
+      </>}
+      {error && <div className="notice error" role="alert"><strong>Line of Business was not changed</strong><p>{error.category === "stale_preview" ? "The reset scope changed after it was reviewed. Continue to run a new preview." : error.message}</p></div>}
+
+      {stage === "warning" && saved && selection && <div className="modal-backdrop" role="presentation"><div className="lob-modal" role="alertdialog" aria-modal="true" aria-labelledby="lob-warning-title">
+        <h3 id="lob-warning-title">Change Line of Business?</h3>
+        {error?.category === "stale_preview" && <div className="notice error" role="alert"><strong>Run a new reset preview</strong><p>The reset scope changed after it was reviewed. Continue to refresh the preview before applying.</p></div>}
+        <p>Changing the Line of Business from {lineOfBusinessLabel(saved)} to {lineOfBusinessLabel(selection)} will remove all payor-specific claim field customizations managed by this tool and restore those fields to their standard default configuration.</p>
+        <p><strong>This applies to all plans under this payor.</strong></p>
+        <div className="confirmation-actions"><button type="button" className="secondary-button" onClick={() => setStage(null)}>Cancel</button><button type="button" className="primary-button" disabled={busy !== null} onClick={runChangePreview}>{busy === "preview" ? "Reviewing…" : "Continue"}</button></div>
+      </div></div>}
+
+      {stage === "confirm" && preview && <div className="modal-backdrop" role="presentation"><div className="lob-modal" role="alertdialog" aria-modal="true" aria-labelledby="lob-confirm-title">
+        <h3 id="lob-confirm-title">Confirm Reset</h3>
+        <p>Reset all managed claim field customizations for all plans under this payor and change Line of Business to {lineOfBusinessLabel(preview.requested_line_of_business)}?</p>
+        <p><strong>{preview.affected_managed_target_count} customized claim-field component(s) will be reset.</strong></p>
+        {SUPPORT_DEVELOPER_MODE && <details className="technical-details"><summary>Technical reset details</summary><dl>
+          <div><dt>Preview hash</dt><dd><code>{preview.preview_state_hash}</code></dd></div>
+          <div><dt>Managed targets</dt><dd>{preview.managed_target_count}</dd></div>
+          <div><dt>Managed records</dt><dd>{preview.managed_her_count}</dd></div>
+          <div><dt>Managed fields</dt><dd>{preview.managed_hef_count}</dd></div>
+        </dl></details>}
+        <div className="confirmation-actions"><button type="button" className="secondary-button" onClick={() => setStage("warning")}>Go Back</button><button type="button" className="primary-button" disabled={busy !== null} onClick={applyChange}>{busy === "apply" ? "Resetting…" : `Reset Fields and Change to ${lineOfBusinessLabel(preview.requested_line_of_business)}`}</button></div>
+      </div></div>}
+    </section>
+  );
+}
+
 export function App() {
   const [optionFields, setOptionFields] = useState<OptionField[]>([]);
   const [metadataError, setMetadataError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedField, setSelectedField] = useState<ClaimFieldCatalogEntry | null>(null);
+  const [lobCurrent, setLobCurrent] = useState<LineOfBusinessCurrentResponse | null>(null);
+  const [lobLoading, setLobLoading] = useState(true);
+  const [lobError, setLobError] = useState<string | null>(null);
+  const [lobSuccess, setLobSuccess] = useState<string | null>(null);
 
   const loadOptions = async () => {
     setLoading(true); setMetadataError(null);
@@ -380,6 +502,16 @@ export function App() {
     finally { setLoading(false); }
   };
   useEffect(() => { void loadOptions(); }, []);
+  useEffect(() => {
+    setLobLoading(true); setLobError(null);
+    void apiClient.lineOfBusinessCurrent({ payor_guid: UI_DEMO_LAUNCH_CONTEXT.payor_guid })
+      .then(setLobCurrent)
+      .catch((caught) => setLobError(safeError(caught).message))
+      .finally(() => setLobLoading(false));
+  }, []);
+
+  const lob = lobCurrent?.line_of_business ?? null;
+  const unlocked = fieldsUnlocked(lob);
 
   const normalizedSearch = search.trim().toLowerCase();
   const visibleFields = useMemo(() => CLAIM_FIELD_CATALOG.filter((field) =>
@@ -403,6 +535,17 @@ export function App() {
             <div><dt>PFC GUID</dt><dd><code>{UI_DEMO_LAUNCH_CONTEXT.pfc_guid}</code></dd></div>
           </dl></details>}
         </section>
+
+        <LineOfBusinessControl current={lobCurrent} loading={lobLoading}
+          onChangeStarted={() => { setSelectedField(null); setLobSuccess(null); }}
+          onChanged={(lineOfBusiness, message) => {
+            setSelectedField(null); setLobSuccess(message); setLobError(null);
+            setLobCurrent({ status: "DEFINED", line_of_business: lineOfBusiness });
+          }} />
+
+        {lobError && <div className="notice error" role="alert"><strong>Line of Business could not be loaded</strong><p>{lobError} Claim fields cannot be edited.</p></div>}
+        {lobSuccess && <div className="notice success" role="status"><strong>Line of Business updated</strong><p>{lobSuccess}</p></div>}
+        {!lobLoading && !lobError && !unlocked && <div className="notice lob-required" role="status"><strong>Line of Business required</strong><p>Select and save a Line of Business before configuring claim fields.</p></div>}
 
         {metadataError && <div className="notice error metadata-error" role="alert"><div><strong>Configuration options could not be loaded</strong><p>{metadataError} Fields remain visible but cannot be edited.</p></div><button type="button" className="secondary-button" onClick={loadOptions}>Try Again</button></div>}
 
@@ -431,24 +574,25 @@ export function App() {
                           <div className="field-grid">
                             {groupFields.map((field) => {
                               const available = catalogFieldIsAvailable(field, optionFields);
+                              const editable = available && unlocked;
                               const canSpan = ["billing", "patient-details", "tail"].includes(group.layout);
                               const wide = canSpan && field.label.length > 35 ? " field-cell--wide" : "";
                               const reserved = /^(unlabeled|untitled)$/i.test(field.label) ? " field-cell--reserved" : "";
                               return (
                                 <button
                                   type="button"
-                                  className={`field-cell${wide}${reserved}${available ? " field-cell--configurable" : ""}`}
+                                  className={`field-cell${wide}${reserved}${available ? " field-cell--configurable" : ""}${available && !unlocked ? " field-cell--locked" : ""}`}
                                   key={field.id}
-                                  disabled={!available}
-                                  onClick={() => available && setSelectedField(field)}
-                                  aria-label={`Field ${field.fieldNumber}, ${field.label}${available ? ", configurable" : ", not configurable yet"}`}
+                                  disabled={!editable}
+                                  onClick={() => editable && setSelectedField(field)}
+                                  aria-label={`Field ${field.fieldNumber}, ${field.label}${editable ? ", configurable" : available ? ", requires Line of Business" : ", not configurable yet"}`}
                                 >
                                   <span className="field-cell-heading">
                                     <span className="field-number">{field.fieldNumber}</span>
-                                    {available && <span className="edit-affordance" aria-hidden="true">Edit ›</span>}
+                                    {available && <span className="edit-affordance" aria-hidden="true">{unlocked ? "Edit ›" : "Locked"}</span>}
                                   </span>
                                   <strong>{field.label}</strong>
-                                  {available && field.capabilityKey && <small>{CAPABILITY_DESCRIPTION[field.capabilityKey].replace(" settings", "")}</small>}
+                                  {available && field.capabilityKey && <small>{unlocked ? CAPABILITY_DESCRIPTION[field.capabilityKey].replace(" settings", "") : "Save Line of Business to configure"}</small>}
                                 </button>
                               );
                             })}

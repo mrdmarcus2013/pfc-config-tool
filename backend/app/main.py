@@ -13,6 +13,13 @@ from backend.app.models import (
     CurrentConfigurationResponse,
     ErrorResponse,
     HealthResponse,
+    LineOfBusinessApplyRequest,
+    LineOfBusinessChangeResponse,
+    LineOfBusinessCurrentRequest,
+    LineOfBusinessCurrentResponse,
+    LineOfBusinessPreviewRequest,
+    LineOfBusinessSaveRequest,
+    LineOfBusinessSaveResponse,
     OptionsResponse,
     PreviewRequest,
 )
@@ -44,6 +51,50 @@ def options(
     service: ConfigurationService = Depends(get_configuration_service),
 ) -> dict[str, object]:
     return service.list_options()
+
+
+@app.post(
+    "/api/config/line-of-business/current",
+    response_model=LineOfBusinessCurrentResponse,
+)
+def current_line_of_business(
+    request: LineOfBusinessCurrentRequest,
+    service: ConfigurationService = Depends(get_configuration_service),
+) -> dict[str, object]:
+    return service.line_of_business_current(**request.model_dump())
+
+
+@app.post(
+    "/api/config/line-of-business/save",
+    response_model=LineOfBusinessSaveResponse,
+)
+def save_line_of_business(
+    request: LineOfBusinessSaveRequest,
+    service: ConfigurationService = Depends(get_configuration_service),
+) -> dict[str, object]:
+    return service.line_of_business_save(**request.model_dump())
+
+
+@app.post(
+    "/api/config/line-of-business/preview-change",
+    response_model=LineOfBusinessChangeResponse,
+)
+def preview_line_of_business_change(
+    request: LineOfBusinessPreviewRequest,
+    service: ConfigurationService = Depends(get_configuration_service),
+) -> dict[str, object]:
+    return service.line_of_business_preview_change(**request.model_dump())
+
+
+@app.post(
+    "/api/config/line-of-business/apply-change",
+    response_model=LineOfBusinessChangeResponse,
+)
+def apply_line_of_business_change(
+    request: LineOfBusinessApplyRequest,
+    service: ConfigurationService = Depends(get_configuration_service),
+) -> dict[str, object]:
+    return service.line_of_business_apply_change(**request.model_dump())
 
 
 @app.post("/api/config/preview", response_model=ConfigurationResponse)

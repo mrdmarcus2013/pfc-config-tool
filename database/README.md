@@ -83,6 +83,12 @@ non-null values is invalid. `KEEP`/`KEEP` preserves the source exactly, while a
 standalone `CLEAR` clears only its requested attribute. Unmanaged HEFs are not
 normalized.
 
+`PFC_CONFIG_PAYOR_CONTEXT` stores the tool-owned Line of Business once per
+`PAYOR_GUID`. `PFC_LINE_OF_BUSINESS` owns read, initial save, destructive-change
+preview, and atomic reset/apply behavior. Its reset scope is derived from
+`PFC_OPTION_REGISTRY.GET_MANAGED_TARGETS`, deduplicated by billing form and
+record type, and deliberately has no plan predicate.
+
 ## Synthetic frontend demo context
 
 The seed data includes `Synthetic UI Demo Payor` for local frontend development:

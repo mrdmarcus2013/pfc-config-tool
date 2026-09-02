@@ -17,6 +17,7 @@ PublicOptionCode = Literal[
     "SERVICE_FACILITY_CONDITIONAL_ADDRESS_NO",
     "SERVICE_FACILITY_NEVER",
 ]
+LineOfBusiness = Literal["HOME_HEALTH", "HOSPICE"]
 SupportedFieldNumber = Literal["77", "81"]
 StateHash = Annotated[
     str,
@@ -107,3 +108,53 @@ class ErrorBody(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorBody
+
+
+class LineOfBusinessCurrentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    payor_guid: GuidText
+
+
+class LineOfBusinessCurrentResponse(BaseModel):
+    status: Literal["UNDEFINED", "DEFINED"]
+    line_of_business: LineOfBusiness | None
+
+
+class LineOfBusinessSaveRequest(LineOfBusinessCurrentRequest):
+    line_of_business: LineOfBusiness
+    audit_user: GuidText
+
+
+class LineOfBusinessSaveResponse(BaseModel):
+    status: Literal["SAVED"]
+    line_of_business: LineOfBusiness
+
+
+class LineOfBusinessPreviewRequest(LineOfBusinessCurrentRequest):
+    requested_line_of_business: LineOfBusiness
+
+
+class LineOfBusinessApplyRequest(LineOfBusinessPreviewRequest):
+    expected_state_hash: StateHash
+    audit_user: GuidText
+
+
+class ManagedTargetCount(BaseModel):
+    billing_form_code: str
+    record_type_code: str
+    her_count: int
+    hef_count: int
+
+
+class LineOfBusinessChangeResponse(BaseModel):
+    status: Literal["CHANGES_REQUIRED", "NO_CHANGE", "APPLIED"]
+    changes_required: bool
+    current_line_of_business: LineOfBusiness
+    requested_line_of_business: LineOfBusiness
+    managed_target_count: int
+    affected_managed_target_count: int
+    managed_her_count: int
+    managed_hef_count: int
+    preview_state_hash: StateHash
+    summary: str
+    debug_targets: list[ManagedTargetCount] = Field(default_factory=list)

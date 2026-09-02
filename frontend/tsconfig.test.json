@@ -13,6 +13,7 @@
     "src/app/**/*.ts",
     "src/app/**/*.tsx",
     "src/data/**/*.ts",
-    "src/types/**/*.ts"
+    "src/types/**/*.ts",
+    "src/vite-env.d.ts"
   ]
 }

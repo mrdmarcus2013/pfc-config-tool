@@ -23,9 +23,6 @@ export const fieldEditorTitle = (field: ClaimFieldCatalogEntry): string =>
     ? "Field 81cc"
     : `Field ${field.fieldNumber} — ${field.label}`;
 
-export const technicalDetailsEnabled = (value: unknown): boolean =>
-  value === true || (typeof value === "string" && value.toLowerCase() === "true");
-
 const providerPresentation = (
   optionCode: PublicOptionCode,
   preview: ConfigurationResponse,

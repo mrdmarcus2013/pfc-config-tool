@@ -9,6 +9,7 @@ BEGIN
     l_option.phys_form_field_num := '81';
 
     l_option.targets(1).target_code := 'PRV';
+    l_option.targets(1).billing_form_code := '837I_5010';
     l_option.targets(1).record_type_code := 'B2000A0030PRV080';
 
     l_option.targets(1).her_requirements(1).attribute_code :=

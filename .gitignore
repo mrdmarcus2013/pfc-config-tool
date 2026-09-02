@@ -55,6 +55,7 @@ frontend/coverage/
 frontend/.test-build/
 
 # Local runtime and database artifacts
+.run/
 *.log
 *.pid
 logs/

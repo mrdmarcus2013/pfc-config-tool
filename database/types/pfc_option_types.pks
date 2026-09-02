@@ -6,6 +6,7 @@ CREATE OR REPLACE PACKAGE pfc_option_types AUTHID DEFINER AS
     SUBTYPE t_phys_form_field_num IS VARCHAR2(30);
     SUBTYPE t_target_code IS VARCHAR2(30);
     SUBTYPE t_record_type_code IS VARCHAR2(20);
+    SUBTYPE t_billing_form_code IS VARCHAR2(10);
     SUBTYPE t_value_text IS VARCHAR2(32767);
 
     c_action_keep  CONSTANT t_action_code := 'KEEP';
@@ -50,6 +51,7 @@ CREATE OR REPLACE PACKAGE pfc_option_types AUTHID DEFINER AS
 
     TYPE t_option_target IS RECORD (
         target_code       t_target_code,
+        billing_form_code t_billing_form_code,
         record_type_code  t_record_type_code,
         her_requirements  t_attribute_requirements,
         hef_requirements  t_hef_requirements

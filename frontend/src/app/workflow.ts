@@ -147,6 +147,9 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   invalid_request: "The request was not valid. Review the selection and try again.",
   database_failure: "The database operation could not be completed safely.",
   application_failure: "The configuration operation failed safely. Nothing was changed.",
+  line_of_business_required: "Select and save a Line of Business before configuring claim fields.",
+  line_of_business_already_saved: "Line of Business is already saved for this payor.",
+  payor_not_found: "The requested payor could not be found.",
   server_failure: "The request could not be completed safely.",
 };
 
