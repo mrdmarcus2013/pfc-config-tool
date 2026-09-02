@@ -1,5 +1,10 @@
 # Synthetic Oracle POC database
 
+Production-facing validation is governed by
+[`docs/PRODUCTION_DATABASE_BOUNDARY.md`](../docs/PRODUCTION_DATABASE_BOUNDARY.md).
+Local tool packages are never prerequisites for standalone MatrixCare
+production harnesses.
+
 This database is deliberately synthetic and exists only to prove PFC, HER, and
 HEF resolution and future mutation behavior. It does not reproduce unknown
 production DDL, constraints, triggers, or indexes. No production data is used,
@@ -137,6 +142,25 @@ validation harnesses, not deployment scripts. Preview 03 and 05 are read-only.
 Rollback APPLY validation 04 and 06 never commit, always finish with a full
 rollback, and must run only in fresh, dedicated Toad sessions containing no
 unrelated uncommitted work.
+
+Value Codes targets `D23002310HI286` as one private structured capability for
+UB-04 fields 39â€“41. `PFC_VALUE_CODES_API` obtains the saved tool-owned LOB and
+accepts only structured Y/N flags; private recipe codes are never advertised.
+The generic engine remains authoritative for PFC/source resolution, complete
+source cloning, four-field overlays (`HI012`, `HI015`, `HI022`, `HI025`),
+minimal overrides, hashes, locking, verification, and transactions. An empty
+selection is a source-derived Default and therefore always has zero canonical
+payor overrides. The legacy generic Value Codes values are diagnostic fallback
+knowledge only: without a complete eligible source, the engine blocks instead
+of inventing the remaining production HEFs.
+
+Production validation files 07â€“09 accept LOB manually because it is tool-only
+metadata. Script 07 is read-only current discovery. Script 08 independently
+performs a standalone read-only Preview, and Script 09 independently
+recalculates the same hash before its mandatory-token rollback-only Apply.
+Neither script depends on repository-installed tool objects. Script 09 must run
+only in a fresh, dedicated Toad session containing no unrelated uncommitted
+work.
 
 Accepted validation gap: Service Facility `REBUILD_OVERRIDE` passed in
 production before the final generic paired HEF rule. The final paired-rule

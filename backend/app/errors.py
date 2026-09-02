@@ -49,6 +49,10 @@ _ORACLE_ERROR_MAP: dict[int, tuple[int, str, str]] = {
     20055: (409, "stale_preview", "The reset preview is stale. Preview the Line of Business change again."),
     20056: (500, "verification_failure", "The Line of Business change could not be verified and was rolled back."),
     20057: (500, "application_failure", "The Line of Business operation failed safely."),
+    20060: (409, "line_of_business_required", "Line of Business must be saved before Value Codes can be configured."),
+    20061: (422, "invalid_selection", "The saved Line of Business is not supported for Value Codes."),
+    20062: (422, "invalid_selection", "The Value Codes selections are not valid for the saved Line of Business."),
+    20063: (409, "current_state_unsupported", "The Value Codes configuration cannot be processed safely."),
 }
 
 

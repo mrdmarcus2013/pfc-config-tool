@@ -176,10 +176,23 @@ def make_current_connection(
     return Connection(CurrentProcedureCursor(result, execute_error=execute_error))
 
 
-def test_provider_taxonomy_and_service_facility_are_publicly_advertised():
+def make_value_codes_current_connection():
+    columns = ["CONFIGURATION_STATUS", "LINE_OF_BUSINESS", "IS_DEFAULT",
+        "CBSA", "FIPS", "CARE_LOCATION_VALUE_CODE",
+        "PATIENT_ENTERED_VALUE_CODE", "COVERED_DAYS_VALUE_CODE",
+        "CANONICAL_STATUS", "DISPLAY_SUMMARY", "PFC_GUID",
+        "BILLING_FORM_CODE", "SOURCE_ELECTRONIC_REC_GUID",
+        "EXISTING_PAYOR_HER_COUNT", "EXISTING_PAYOR_HEF_COUNT", "STATE_HASH"]
+    row = ["RESOLVED", "HOME_HEALTH", "Y", "N", "N", "N", "N", "N",
+        "INHERITED", "Default", "synthetic-pfc", "837I_5010",
+        "synthetic-source", 0, 0, HASH]
+    return Connection(CurrentProcedureCursor(ResultCursor(columns, [row])))
+
+
+def test_public_capabilities_include_grouped_value_codes_without_recipe_ids():
     fields = ConfigurationService().list_options()["fields"]
 
-    assert [field["field_number"] for field in fields] == ["81", "77"]
+    assert [field["field_number"] for field in fields] == ["81", "77", "39-41"]
     assert fields[0]["field_label"] == "Provider Taxonomy"
     assert [option["option_code"] for option in fields[0]["options"]] == [
         "PROVIDER_TAXONOMY_ON",
@@ -189,6 +202,44 @@ def test_provider_taxonomy_and_service_facility_are_publicly_advertised():
     assert [option["option_code"] for option in fields[1]["options"]] == (
         SERVICE_FACILITY_OPTIONS
     )
+    assert fields[2] == {
+        "field_number": "39-41", "field_label": "Value Codes", "options": []
+    }
+
+
+def test_value_codes_current_maps_structured_default_and_rolls_back():
+    connection = make_value_codes_current_connection()
+    result = ConfigurationService(lambda: connection).value_codes_current(
+        payor_guid=request_kwargs()["payor_guid"], plan_guid=None)
+    assert result["is_default"] is True
+    assert result["display_summary"] == "Default"
+    assert not any(result["selections"].values())
+    assert connection.rollbacks == 1
+    assert connection.commits == 0
+
+
+def test_value_codes_preview_and_apply_bind_flags_without_public_recipe_id():
+    selections = {"cbsa": True, "fips": False,
+        "care_location_value_code": False,
+        "patient_entered_value_code": False,
+        "covered_days_value_code": False}
+    preview_connection = make_connection(display_label="CBSA")
+    preview = ConfigurationService(lambda: preview_connection).value_codes_preview(
+        payor_guid=request_kwargs()["payor_guid"], plan_guid=None,
+        selections=selections, audit_user=request_kwargs()["audit_user"])
+    assert preview["display_summary"] == "CBSA"
+    assert preview_connection.rollbacks == 1
+    assert preview_connection._cursor.binds["cbsa"] == "Y"
+    assert "option_code" not in preview_connection._cursor.binds
+
+    apply_connection = make_connection(status="APPLIED", display_label="CBSA")
+    applied = ConfigurationService(lambda: apply_connection).value_codes_apply(
+        payor_guid=request_kwargs()["payor_guid"], plan_guid=None,
+        selections=selections, audit_user=request_kwargs()["audit_user"],
+        expected_state_hash=HASH)
+    assert applied["status"] == "APPLIED"
+    assert apply_connection.commits == 1
+    assert apply_connection._cursor.binds["expected_state_hash"] == HASH
 
 
 def test_current_provider_is_one_read_only_oracle_call():

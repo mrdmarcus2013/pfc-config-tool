@@ -75,6 +75,31 @@ class StubService:
     def line_of_business_apply_change(self, **request):
         return self._lob_change("APPLIED", request)
 
+    def value_codes_current(self, **request):
+        return {
+            "configuration_status": "RESOLVED", "line_of_business": "HOME_HEALTH",
+            "is_default": True, "selections": value_code_selections(),
+            "canonical_status": "INHERITED", "display_summary": "Default",
+            "pfc_guid": "30000000-0000-0000-0000-0000000000A1", "debug": {},
+        }
+
+    def value_codes_preview(self, **request):
+        return self._value_codes_result("PREVIEW", request)
+
+    def value_codes_apply(self, **request):
+        return self._value_codes_result("APPLIED", request)
+
+    @staticmethod
+    def _value_codes_result(status, request):
+        selections = request["selections"]
+        return {"status": status, "is_default": not any(selections.values()),
+                "selections": selections,
+                "display_summary": "Default" if not any(selections.values()) else "CBSA",
+                "state_hash": HASH, "change_count": 1,
+                "summary": "1 configuration change(s) is ready for review.",
+                "pfc_guid": "30000000-0000-0000-0000-0000000000A1",
+                "debug_changes": []}
+
     @staticmethod
     def _lob_change(status, request):
         return {
@@ -129,6 +154,13 @@ def client():
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+def value_code_selections(**overrides):
+    return {"cbsa": False, "fips": False,
+            "care_location_value_code": False,
+            "patient_entered_value_code": False,
+            "covered_days_value_code": False, **overrides}
 
 
 def test_health_reports_application_and_oracle(client):
@@ -243,6 +275,58 @@ def test_current_configuration_rejects_unsupported_field(client):
     )
 
     assert response.status_code == 422
+
+
+def test_value_codes_uses_structured_contract_without_recipe_ids(client):
+    base = {"payor_guid": BASE_REQUEST["payor_guid"], "plan_guid": None}
+    current = client.post("/api/config/value-codes/current", json=base)
+    assert current.status_code == 200
+    assert current.json()["is_default"] is True
+    assert current.json()["selections"] == value_code_selections()
+    assert "recipe" not in current.text.lower()
+
+    preview = client.post("/api/config/value-codes/preview", json={**base,
+        "selections": value_code_selections(cbsa=True),
+        "audit_user": BASE_REQUEST["audit_user"]})
+    assert preview.status_code == 200
+    assert preview.json()["display_summary"] == "CBSA"
+    applied = client.post("/api/config/value-codes/apply", json={**base,
+        "selections": value_code_selections(cbsa=True),
+        "audit_user": BASE_REQUEST["audit_user"], "expected_state_hash": HASH})
+    assert applied.status_code == 200
+    assert applied.json()["status"] == "APPLIED"
+    assert "HOME_HEALTH_CBSA" not in applied.text
+
+
+@pytest.mark.parametrize("selections", [
+    value_code_selections(fips=True),
+    value_code_selections(care_location_value_code=True,
+                          patient_entered_value_code=True),
+    value_code_selections(care_location_value_code=True,
+                          patient_entered_value_code=True,
+                          covered_days_value_code=True),
+])
+def test_value_codes_rejects_invalid_structured_combinations(client, selections):
+    response = client.post("/api/config/value-codes/preview", json={
+        "payor_guid": BASE_REQUEST["payor_guid"], "plan_guid": None,
+        "selections": selections, "audit_user": BASE_REQUEST["audit_user"]})
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("selections", [
+    value_code_selections(patient_entered_value_code=True),
+    value_code_selections(patient_entered_value_code=True,
+                          covered_days_value_code=True),
+    value_code_selections(covered_days_value_code=True),
+])
+def test_value_codes_accepts_patient_entered_without_vc80_and_independent_vc80(
+    client, selections,
+):
+    response = client.post("/api/config/value-codes/preview", json={
+        "payor_guid": BASE_REQUEST["payor_guid"], "plan_guid": None,
+        "selections": selections, "audit_user": BASE_REQUEST["audit_user"]})
+    assert response.status_code == 200
+    assert response.json()["selections"] == selections
 
 
 @pytest.mark.parametrize("option_code", PUBLIC_OPTIONS)

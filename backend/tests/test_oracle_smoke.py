@@ -25,9 +25,12 @@ def test_installed_synthetic_oracle_poc_preview():
         fields = {
             field["field_number"]: field for field in options.json()["fields"]
         }
-        assert set(fields) == {"77", "81"}
+        assert set(fields) == {"39-41", "77", "81"}
         assert fields["81"]["field_label"] == "Provider Taxonomy"
         assert fields["77"]["field_label"] == "Service Facility"
+        assert fields["39-41"] == {
+            "field_number": "39-41", "field_label": "Value Codes", "options": []
+        }
 
         undefined_lob = client.post(
             "/api/config/line-of-business/current",
@@ -60,6 +63,27 @@ def test_installed_synthetic_oracle_poc_preview():
             assert current.status_code == 200
             assert current.json()["status"] == "RESOLVED"
             assert current.json()["effective_option_code"] == expected_option
+
+        value_current = client.post("/api/config/value-codes/current", json={
+            "payor_guid": "10000000-0000-0000-0000-00000000D002",
+            "plan_guid": None,
+        })
+        assert value_current.status_code == 200
+        assert value_current.json()["is_default"] is True
+        assert not any(value_current.json()["selections"].values())
+
+        value_preview = client.post("/api/config/value-codes/preview", json={
+            "payor_guid": "10000000-0000-0000-0000-00000000D002",
+            "plan_guid": None,
+            "selections": {"cbsa": True, "fips": False,
+                "care_location_value_code": False,
+                "patient_entered_value_code": False,
+                "covered_days_value_code": False},
+            "audit_user": "90000000-0000-0000-0000-000000000003",
+        })
+        assert value_preview.status_code == 200
+        assert value_preview.json()["display_summary"] == "CBSA"
+        assert "recipe" not in value_preview.text.lower()
 
         preview = client.post(
             "/api/config/preview",

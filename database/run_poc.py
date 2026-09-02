@@ -23,6 +23,12 @@ ACTION_SCRIPTS = {
         DATABASE_DIR / "install" / "005_script_3.sql",
         DATABASE_DIR / "install" / "006_line_of_business.sql",
     ],
+    "install_value_codes": [
+        DATABASE_DIR / "install" / "005_prep_script_3.sql",
+        DATABASE_DIR / "install" / "005_script_3.sql",
+        DATABASE_DIR / "install" / "006_line_of_business.sql",
+        DATABASE_DIR / "install" / "007_value_codes_discovery.sql",
+    ],
     "test": [DATABASE_DIR / "tests" / "run_all.sql"],
     "test3": [DATABASE_DIR / "tests" / "test_03_apply_option.sql"],
     "reset": [

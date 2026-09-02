@@ -26,7 +26,7 @@ DECLARE
     c_report_address CONSTANT VARCHAR2(1) := 'Y';
     c_expected_preview_state_hash CONSTANT VARCHAR2(64) :=
         'PUT_64_CHARACTER_PREVIEW_STATE_HASH_HERE';
-    c_audit_user CONSTANT VARCHAR2(36) := 'PUT_AUDIT_USER_GUID_HERE';
+    c_audit_user CONSTANT VARCHAR2(36) := 'PUT_AUDIT_USER_HERE';
     c_safety_token CONSTANT VARCHAR2(40) :=
         'ROLLBACK_ONLY_SERVICE_FACILITY';
 
@@ -403,7 +403,7 @@ DECLARE
                 'A 64-character EXPECTED_PREVIEW_STATE_HASH is mandatory.');
         END IF;
         IF l_audit_user IS NULL
-           OR l_audit_user = 'PUT_AUDIT_USER_GUID_HERE'
+           OR l_audit_user = 'PUT_AUDIT_USER_HERE'
            OR LENGTH(l_audit_user) > 36 THEN
             RAISE_APPLICATION_ERROR(c_err_invalid_input,
                 'A valid AUDIT_USER is required.');

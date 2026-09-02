@@ -22,6 +22,11 @@ from backend.app.models import (
     LineOfBusinessSaveResponse,
     OptionsResponse,
     PreviewRequest,
+    ValueCodesApplyRequest,
+    ValueCodesChangeRequest,
+    ValueCodesChangeResponse,
+    ValueCodesCurrentRequest,
+    ValueCodesCurrentResponse,
 )
 from backend.app.services.configuration import ConfigurationService
 
@@ -119,3 +124,27 @@ def apply(
     service: ConfigurationService = Depends(get_configuration_service),
 ) -> dict[str, object]:
     return service.apply(**request.model_dump())
+
+
+@app.post("/api/config/value-codes/current", response_model=ValueCodesCurrentResponse)
+def current_value_codes(
+    request: ValueCodesCurrentRequest,
+    service: ConfigurationService = Depends(get_configuration_service),
+) -> dict[str, object]:
+    return service.value_codes_current(**request.model_dump())
+
+
+@app.post("/api/config/value-codes/preview", response_model=ValueCodesChangeResponse)
+def preview_value_codes(
+    request: ValueCodesChangeRequest,
+    service: ConfigurationService = Depends(get_configuration_service),
+) -> dict[str, object]:
+    return service.value_codes_preview(**request.model_dump())
+
+
+@app.post("/api/config/value-codes/apply", response_model=ValueCodesChangeResponse)
+def apply_value_codes(
+    request: ValueCodesApplyRequest,
+    service: ConfigurationService = Depends(get_configuration_service),
+) -> dict[str, object]:
+    return service.value_codes_apply(**request.model_dump())

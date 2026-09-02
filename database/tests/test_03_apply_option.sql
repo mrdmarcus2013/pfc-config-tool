@@ -98,6 +98,9 @@ DECLARE
         l_last_order           PLS_INTEGER := 0;
         l_last_phase           PLS_INTEGER := 0;
         l_phase                PLS_INTEGER;
+        l_target_action        VARCHAR2(30);
+        l_matches_source       VARCHAR2(1);
+        l_matches_desired      VARCHAR2(1);
     BEGIN
         l_delete_hef_count := 0;
         l_delete_her_count := 0;
@@ -133,6 +136,9 @@ DECLARE
             l_summary_billing_form,
             l_summary_record_type,
             l_source_guid,
+            l_target_action,
+            l_matches_source,
+            l_matches_desired,
             l_existing_her_count,
             l_existing_hef_count,
             l_new_hef_count,

@@ -29,6 +29,12 @@ DECLARE
     l_entry_date DATE;
     l_entry_user VARCHAR2(36);
     l_failed BOOLEAN;
+    l_vc_text VARCHAR2(200);
+    l_vc_guid VARCHAR2(36);
+    l_vc_form VARCHAR2(10);
+    l_vc_source VARCHAR2(36);
+    l_vc_state VARCHAR2(64);
+    l_vc_default VARCHAR2(1);
 
     PROCEDURE assert_text(p_label VARCHAR2, p_actual VARCHAR2, p_expected VARCHAR2) IS
     BEGIN
@@ -167,7 +173,7 @@ BEGIN
     IF NOT l_failed THEN RAISE_APPLICATION_ERROR(-20973,
         'Invalid Line of Business was not rejected.'); END IF;
 
-    /* Four managed target scopes span NULL, current, other, and stale plans. */
+    /* Five managed target scopes span NULL, current, other, and stale plans. */
     SAVEPOINT reset_scope;
     clone_target('30000000-0000-0000-0000-00000000D081',
         '62000000-0000-0000-0000-000000000001', c_payor_defined, NULL);
@@ -177,6 +183,8 @@ BEGIN
         '62000000-0000-0000-0000-000000000003', c_payor_defined, 'PLAN-TWO');
     clone_target('31000000-0000-0000-0000-00000000D773',
         '62000000-0000-0000-0000-000000000004', c_payor_defined, 'STALE-PLAN');
+    clone_target('32000000-0000-0000-0000-000000000001',
+        '62000000-0000-0000-0000-000000000005', c_payor_defined, 'OTHER-PLAN');
     clone_target('30000000-0000-0000-0000-00000000D081',
         '62000000-0000-0000-0000-000000000099', c_payor_defined, 'STALE-PLAN',
         c_unmanaged_type);
@@ -187,9 +195,9 @@ BEGIN
     assert_text('Change preview status', l_status, 'CHANGES_REQUIRED');
     assert_text('Change preview current', l_current, 'HOME_HEALTH');
     assert_text('Change preview requested', l_requested, 'HOSPICE');
-    assert_number('All managed targets enumerated', l_target_count, 4);
-    assert_number('All managed target scopes affected', l_affected, 4);
-    assert_number('All plan HERs counted', l_hers, 4);
+    assert_number('All managed targets enumerated', l_target_count, 5);
+    assert_number('All managed target scopes affected', l_affected, 5);
+    assert_number('All plan HERs counted', l_hers, 5);
     IF l_hefs < 11 THEN RAISE_APPLICATION_ERROR(-20974,
         'Managed HEF count is incomplete.'); END IF;
     IF LENGTH(l_hash) <> 64 THEN RAISE_APPLICATION_ERROR(-20975,
@@ -212,14 +220,16 @@ BEGIN
         '62000000-0000-0000-0000-000000000001',
         '62000000-0000-0000-0000-000000000002',
         '62000000-0000-0000-0000-000000000003',
-        '62000000-0000-0000-0000-000000000004');
+        '62000000-0000-0000-0000-000000000004',
+        '62000000-0000-0000-0000-000000000005');
     assert_number('All-plan managed HER reset', l_number, 0);
     SELECT COUNT(*) INTO l_number FROM hcfa_electronic_fields f
     WHERE f.electronic_rec_guid IN (
         '62000000-0000-0000-0000-000000000001',
         '62000000-0000-0000-0000-000000000002',
         '62000000-0000-0000-0000-000000000003',
-        '62000000-0000-0000-0000-000000000004');
+        '62000000-0000-0000-0000-000000000004',
+        '62000000-0000-0000-0000-000000000005');
     assert_number('All managed HEFs reset', l_number, 0);
     SELECT COUNT(*) INTO l_number FROM hcfa_electronic_records
     WHERE electronic_rec_guid = '62000000-0000-0000-0000-000000000099';
@@ -233,6 +243,14 @@ BEGIN
       AND c.rec_ent_date = l_entry_date AND c.rec_ent_user = l_entry_user
       AND c.rec_mod_date IS NOT NULL AND c.rec_mod_user = c_audit;
     assert_number('LOB and audit update verified', l_number, 1);
+    pfc_value_codes_api.current_configuration(
+        c_payor_defined, NULL, l_result);
+    FETCH l_result INTO l_status, l_current, l_vc_default,
+        l_changes, l_changes, l_changes, l_changes, l_changes,
+        l_requested, l_vc_text, l_vc_guid, l_vc_form, l_vc_source,
+        l_hers, l_hefs, l_vc_state;
+    CLOSE l_result;
+    assert_text('Value Codes is Default after LOB reset', l_vc_default, 'Y');
     ROLLBACK TO reset_scope;
 
     /* A changed managed row makes the destructive preview stale before DML. */

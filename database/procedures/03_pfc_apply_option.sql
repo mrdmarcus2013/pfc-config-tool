@@ -59,6 +59,8 @@ IS
         existing_her_count PLS_INTEGER,
         existing_hef_count PLS_INTEGER,
         desired_differs    BOOLEAN,
+        current_matches_source BOOLEAN,
+        current_matches_desired BOOLEAN,
         target_action      VARCHAR2(30),
         new_guid           hcfa_electronic_records.electronic_rec_guid%TYPE
     );
@@ -102,6 +104,9 @@ IS
     l_result_status        VARCHAR2(20);
     l_output_record_type   hcfa_electronic_records.record_type_code%TYPE;
     l_output_source_guid   hcfa_electronic_records.electronic_rec_guid%TYPE;
+    l_output_target_action VARCHAR2(30);
+    l_output_current_matches_source VARCHAR2(1);
+    l_output_current_matches_desired VARCHAR2(1);
 
     FUNCTION values_equal (
         p_left IN VARCHAR2,
@@ -170,6 +175,28 @@ IS
             encoded_value(p_row.notes) ||
             encoded_value(p_row.include_record_data_onclaim);
     END her_business_serial;
+
+    FUNCTION her_functional_serial (
+        p_row IN hcfa_electronic_records%ROWTYPE
+    ) RETURN VARCHAR2
+    IS
+    BEGIN
+        /* Scope, identity, template and audit metadata do not alter behavior. */
+        RETURN
+            encoded_value(p_row.loop_id) ||
+            encoded_value(p_row.contiguity_ind) ||
+            encoded_value(p_row.billing_form_code) ||
+            encoded_value(p_row.record_type_code) ||
+            encoded_number(p_row.record_size) ||
+            encoded_value(p_row.mandatory_ind) ||
+            encoded_value(p_row.req_for_claim_ind) ||
+            encoded_value(p_row.type_of_bill) ||
+            encoded_value(p_row.detail_ind) ||
+            encoded_value(p_row.max_number) ||
+            encoded_value(p_row.invoice_ind) ||
+            encoded_number(p_row.max_carry_forward) ||
+            encoded_value(p_row.sto_proc_name);
+    END her_functional_serial;
 
     FUNCTION hef_business_serial (
         p_row IN hcfa_electronic_fields%ROWTYPE
@@ -265,6 +292,19 @@ IS
         RETURN her_business_serial(p_left_her) = her_business_serial(p_right_her)
            AND hef_sets_equal(p_left_hefs, p_right_hefs);
     END configurations_equal;
+
+    FUNCTION functional_configurations_equal (
+        p_left_her   IN hcfa_electronic_records%ROWTYPE,
+        p_left_hefs  IN t_hef_rows,
+        p_right_her  IN hcfa_electronic_records%ROWTYPE,
+        p_right_hefs IN t_hef_rows
+    ) RETURN BOOLEAN
+    IS
+    BEGIN
+        RETURN her_functional_serial(p_left_her) =
+               her_functional_serial(p_right_her)
+           AND hef_sets_equal(p_left_hefs, p_right_hefs);
+    END functional_configurations_equal;
 
     FUNCTION payor_configurations_equal (
         p_current_her  IN hcfa_electronic_records%ROWTYPE,
@@ -924,6 +964,20 @@ IS
             FROM hcfa_electronic_fields f
             WHERE f.electronic_rec_guid =
                 l_targets(p_state_index).current_her.electronic_rec_guid;
+            l_targets(p_state_index).current_matches_source :=
+                functional_configurations_equal(
+                    l_targets(p_state_index).current_her,
+                    l_targets(p_state_index).current_hefs,
+                    l_targets(p_state_index).source_her,
+                    l_targets(p_state_index).source_hefs
+                );
+            l_targets(p_state_index).current_matches_desired :=
+                functional_configurations_equal(
+                    l_targets(p_state_index).current_her,
+                    l_targets(p_state_index).current_hefs,
+                    l_targets(p_state_index).overlay_her,
+                    l_targets(p_state_index).overlay_hefs
+                );
         END IF;
 
         IF NOT l_targets(p_state_index).desired_differs THEN
@@ -1607,9 +1661,19 @@ BEGIN
     IF l_targets.COUNT = 1 THEN
         l_output_record_type := l_targets(1).record_type_code;
         l_output_source_guid := l_targets(1).source_guid;
+        l_output_target_action := l_targets(1).target_action;
+        l_output_current_matches_source := CASE
+            WHEN l_targets(1).existing_her_count <> 1 THEN NULL
+            WHEN l_targets(1).current_matches_source THEN 'Y' ELSE 'N' END;
+        l_output_current_matches_desired := CASE
+            WHEN l_targets(1).existing_her_count <> 1 THEN NULL
+            WHEN l_targets(1).current_matches_desired THEN 'Y' ELSE 'N' END;
     ELSE
         l_output_record_type := NULL;
         l_output_source_guid := NULL;
+        l_output_target_action := NULL;
+        l_output_current_matches_source := NULL;
+        l_output_current_matches_desired := NULL;
     END IF;
     prepare_change_sql;
 
@@ -1624,6 +1688,9 @@ BEGIN
             CAST(l_billing_form_code AS VARCHAR2(10)) AS billing_form_code,
             CAST(l_output_record_type AS VARCHAR2(20)) AS record_type_code,
             CAST(l_output_source_guid AS VARCHAR2(36)) AS source_electronic_rec_guid,
+            CAST(l_output_target_action AS VARCHAR2(30)) AS target_action,
+            CAST(l_output_current_matches_source AS VARCHAR2(1)) AS current_matches_source,
+            CAST(l_output_current_matches_desired AS VARCHAR2(1)) AS current_matches_desired,
             CAST(l_existing_her_count AS NUMBER) AS existing_payor_her_count,
             CAST(l_existing_hef_count AS NUMBER) AS existing_payor_hef_count,
             CAST(l_new_hef_count AS NUMBER) AS new_hef_count,

@@ -66,6 +66,11 @@ OPTION_FIELDS = [
             },
         ],
     },
+    {
+        "field_number": "39-41",
+        "field_label": "Value Codes",
+        "options": [],
+    },
 ]
 
 _OPTION_FIELD_NUMBERS = {
@@ -149,6 +154,35 @@ BEGIN
         p_summary => :summary_cursor,
         p_target_counts => :targets_cursor
     );
+END;
+"""
+
+_VALUE_CODES_CURRENT_BLOCK = """
+BEGIN
+    pfc_value_codes_api.current_configuration(
+        p_payor_guid => :payor_guid, p_plan_guid => :plan_guid,
+        p_result => :result_cursor
+    );
+END;
+"""
+
+_VALUE_CODES_CHANGE_BLOCK = """
+BEGIN
+    IF :operation_mode = 'PREVIEW' THEN
+        pfc_value_codes_api.preview_configuration(
+            :payor_guid, :plan_guid, :cbsa, :fips,
+            :care_location_value_code, :patient_entered_value_code,
+            :covered_days_value_code, :audit_user,
+            :summary_cursor, :changes_cursor
+        );
+    ELSE
+        pfc_value_codes_api.apply_configuration(
+            :payor_guid, :plan_guid, :cbsa, :fips,
+            :care_location_value_code, :patient_entered_value_code,
+            :covered_days_value_code, :audit_user, :expected_state_hash,
+            :summary_cursor, :changes_cursor
+        );
+    END IF;
 END;
 """
 
@@ -273,6 +307,133 @@ class ConfigurationService:
             operation="Line of Business change apply",
             commit=True,
         )
+
+    def value_codes_current(
+        self, *, payor_guid: str, plan_guid: str | None
+    ) -> dict[str, Any]:
+        connection = cursor = result_cursor = None
+        try:
+            connection = self._connection_factory()
+            cursor = connection.cursor()
+            result_out = cursor.var(oracledb.DB_TYPE_CURSOR)
+            cursor.execute(_VALUE_CODES_CURRENT_BLOCK, payor_guid=payor_guid,
+                           plan_guid=plan_guid, result_cursor=result_out)
+            result_cursor = result_out.getvalue()
+            rows = _rows_as_dicts(result_cursor)
+            if len(rows) != 1 or rows[0].get("configuration_status") != "RESOLVED":
+                raise ApiError(409, "current_state_unsupported",
+                               "The current Value Codes configuration requires support review.")
+            row = rows[0]
+            lob = row.get("line_of_business")
+            if lob not in {"HOME_HEALTH", "HOSPICE"}:
+                raise ApiError(500, "application_failure",
+                               "The database returned an invalid Value Codes result.")
+            keys = ("cbsa", "fips", "care_location_value_code",
+                    "patient_entered_value_code", "covered_days_value_code")
+            if any(row.get(key) not in {"Y", "N"} for key in keys):
+                raise ApiError(500, "application_failure",
+                               "The database returned an invalid Value Codes result.")
+            response = {
+                "configuration_status": "RESOLVED",
+                "line_of_business": lob,
+                "is_default": row.get("is_default") == "Y",
+                "selections": {key: row[key] == "Y" for key in keys},
+                "canonical_status": str(row["canonical_status"]),
+                "display_summary": str(row["display_summary"]),
+                "pfc_guid": str(row["pfc_guid"]),
+                "debug": {
+                    "billing_form_code": row.get("billing_form_code"),
+                    "source_electronic_rec_guid": row.get("source_electronic_rec_guid"),
+                    "existing_payor_her_count": int(row.get("existing_payor_her_count", 0)),
+                    "existing_payor_hef_count": int(row.get("existing_payor_hef_count", 0)),
+                    "state_hash": row.get("state_hash"),
+                },
+            }
+            connection.rollback()
+            return response
+        except ApiError:
+            if connection is not None: _rollback_after_error(connection)
+            raise
+        except oracledb.DatabaseError as exc:
+            if connection is not None: _rollback_after_error(connection)
+            raise translate_oracle_error(exc, "current Value Codes") from None
+        except DatabaseConfigurationError as exc:
+            if connection is not None: _rollback_after_error(connection)
+            raise ApiError(503, "database_failure", "The database connection is not configured.") from exc
+        except Exception as exc:
+            if connection is not None: _rollback_after_error(connection)
+            logger.error("Unexpected Value Codes current failure (%s)", type(exc).__name__)
+            raise ApiError(500, "application_failure", "Value Codes could not be resolved safely.") from None
+        finally:
+            if result_cursor is not None: _close_safely(result_cursor, "Value Codes result cursor")
+            if cursor is not None: _close_safely(cursor, "Value Codes procedure cursor")
+            if connection is not None: _close_safely(connection, "Value Codes connection")
+
+    def value_codes_preview(self, *, selections: dict[str, bool], **kwargs: Any) -> dict[str, Any]:
+        return self._run_value_codes(selections=selections, mode="PREVIEW",
+                                     expected_state_hash=None, **kwargs)
+
+    def value_codes_apply(self, *, selections: dict[str, bool],
+                          expected_state_hash: str, **kwargs: Any) -> dict[str, Any]:
+        return self._run_value_codes(selections=selections, mode="APPLY",
+                                     expected_state_hash=expected_state_hash, **kwargs)
+
+    def _run_value_codes(self, *, payor_guid: str, plan_guid: str | None,
+                         selections: dict[str, bool], audit_user: str,
+                         mode: str, expected_state_hash: str | None) -> dict[str, Any]:
+        connection = cursor = summary_cursor = changes_cursor = None
+        try:
+            connection = self._connection_factory()
+            cursor = connection.cursor()
+            summary_out = cursor.var(oracledb.DB_TYPE_CURSOR)
+            changes_out = cursor.var(oracledb.DB_TYPE_CURSOR)
+            flags = {key: "Y" if selections[key] else "N" for key in (
+                "cbsa", "fips", "care_location_value_code",
+                "patient_entered_value_code", "covered_days_value_code")}
+            cursor.execute(_VALUE_CODES_CHANGE_BLOCK, payor_guid=payor_guid,
+                plan_guid=plan_guid, audit_user=audit_user, operation_mode=mode,
+                expected_state_hash=expected_state_hash, summary_cursor=summary_out,
+                changes_cursor=changes_out, **flags)
+            summary_cursor = summary_out.getvalue(); changes_cursor = changes_out.getvalue()
+            summaries = _rows_as_dicts(summary_cursor); changes = _rows_as_dicts(changes_cursor)
+            if len(summaries) != 1:
+                raise ApiError(500, "application_failure", "The database returned an invalid Value Codes result.")
+            row = summaries[0]; status = str(row.get("status"))
+            allowed = {"PREVIEW", "NO_CHANGE"} if mode == "PREVIEW" else {"APPLIED", "NO_CHANGE"}
+            if status not in allowed:
+                raise ApiError(500, "application_failure", "The database returned an invalid Value Codes status.")
+            change_count = int(row["change_count"])
+            response = {
+                "status": status, "is_default": not any(selections.values()),
+                "selections": selections, "display_summary": str(row["display_label"]),
+                "state_hash": str(row["state_hash"]), "change_count": change_count,
+                "summary": _safe_summary(status, change_count), "pfc_guid": row.get("pfc_guid"),
+                "debug_changes": [{"operation_order": int(change["operation_order"]),
+                    "operation_code": str(change["operation_code"]),
+                    "target_identifier": change.get("target_electronic_rec_guid"),
+                    "field_number": change.get("field_number")} for change in changes],
+            }
+            if mode == "APPLY": connection.commit()
+            else: connection.rollback()
+            return response
+        except ApiError:
+            if connection is not None: _rollback_after_error(connection)
+            raise
+        except oracledb.DatabaseError as exc:
+            if connection is not None: _rollback_after_error(connection)
+            raise translate_oracle_error(exc, mode.lower() + " Value Codes") from None
+        except DatabaseConfigurationError as exc:
+            if connection is not None: _rollback_after_error(connection)
+            raise ApiError(503, "database_failure", "The database connection is not configured.") from exc
+        except Exception as exc:
+            if connection is not None: _rollback_after_error(connection)
+            logger.error("Unexpected Value Codes adapter failure (%s)", type(exc).__name__)
+            raise ApiError(500, "application_failure", "The Value Codes operation failed safely.") from None
+        finally:
+            if changes_cursor is not None: _close_safely(changes_cursor, "Value Codes changes cursor")
+            if summary_cursor is not None: _close_safely(summary_cursor, "Value Codes summary cursor")
+            if cursor is not None: _close_safely(cursor, "Value Codes procedure cursor")
+            if connection is not None: _close_safely(connection, "Value Codes connection")
 
     def _run_lob_single(
         self,

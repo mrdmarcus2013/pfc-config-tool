@@ -5,4 +5,5 @@ WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK
 @@004_scripts_1_2.sql
 @@005_script_3.sql
 @@006_line_of_business.sql
+@@007_value_codes_discovery.sql
 PROMPT Synthetic PFC POC installation complete.

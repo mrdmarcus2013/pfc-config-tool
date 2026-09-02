@@ -81,6 +81,9 @@ DECLARE
         l_billing_form VARCHAR2(10);
         l_record_type VARCHAR2(20);
         l_source_guid VARCHAR2(36);
+        l_target_action VARCHAR2(30);
+        l_matches_source VARCHAR2(1);
+        l_matches_desired VARCHAR2(1);
         l_existing_her_count NUMBER;
         l_existing_hef_count NUMBER;
         l_new_hef_count NUMBER;
@@ -99,7 +102,8 @@ DECLARE
         FETCH l_summary INTO
             l_result_status, l_result_option, l_display_label,
             l_payor_guid, l_plan_guid, l_result_pfc_guid, l_billing_form,
-            l_record_type, l_source_guid, l_existing_her_count,
+            l_record_type, l_source_guid, l_target_action,
+            l_matches_source, l_matches_desired, l_existing_her_count,
             l_existing_hef_count, l_new_hef_count, l_state_hash,
             l_change_count;
         CLOSE l_summary;

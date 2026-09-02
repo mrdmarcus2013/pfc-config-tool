@@ -1,41 +1,36 @@
 /*
- * Provider Taxonomy production rollback-only APPLY validation.
+ * PRODUCTION HARNESS CLASS: READ_ONLY
+ * STANDALONE: YES
+ * TOOL-OWNED OBJECT DEPENDENCIES: NONE
  *
- * This anonymous block never commits and cannot be switched to persistence.
- * It locks and re-reads the Preview 05 state, rejects a stale preview hash,
- * applies the explicit PRV target atomically, verifies the temporary
- * canonical state, rolls back to its savepoint, and verifies restoration.
+ * Value Codes production Preview using MatrixCare objects and Oracle built-ins
+ * only. It installs nothing and performs no DML.
  *
- * IMPORTANT: Execute this script only in a fresh, dedicated Toad session
- * containing no unrelated uncommitted work. The harness intentionally issues
- * a final full ROLLBACK so every row/table lock acquired by the test is
- * released before the block finishes.
- *
- * Keep production identifiers only in an unsaved editor buffer.
+ * Keep production identifiers only in an unsaved editor buffer. LOB is a
+ * required manual input because MatrixCare production does not store tool LOB
+ * metadata. The source HEF count is discovered and is never hard-coded.
  */
 SET SERVEROUTPUT ON
 SET DEFINE OFF
 
 DECLARE
     /* ================================================================
-     * MANUAL INPUTS - edit only these six constants.
+     * MANUAL INPUTS - edit only these nine constants.
      * ================================================================ */
     c_payor_guid CONSTANT VARCHAR2(36) := 'PUT_PAYOR_GUID_HERE';
     c_plan_guid CONSTANT VARCHAR2(36) := NULL;
-    c_provider_taxonomy CONSTANT VARCHAR2(3) := 'ON';
-    c_expected_preview_state_hash CONSTANT VARCHAR2(64) :=
-        'PUT_64_CHARACTER_PREVIEW_STATE_HASH_HERE';
+    c_line_of_business CONSTANT VARCHAR2(20) := 'HOME_HEALTH';
+    c_cbsa CONSTANT VARCHAR2(1) := 'N';
+    c_fips CONSTANT VARCHAR2(1) := 'N';
+    c_care_location_value_code CONSTANT VARCHAR2(1) := 'N';
+    c_patient_entered_value_code CONSTANT VARCHAR2(1) := 'N';
+    c_covered_days_value_code CONSTANT VARCHAR2(1) := 'N';
     c_audit_user CONSTANT VARCHAR2(36) := 'PUT_AUDIT_USER_HERE';
-    c_safety_token CONSTANT VARCHAR2(40) :=
-        'ROLLBACK_ONLY_PROVIDER_TAXONOMY';
 
     c_err_invalid_input     CONSTANT PLS_INTEGER := -20501;
     c_err_resolution        CONSTANT PLS_INTEGER := -20502;
     c_err_hash_too_large    CONSTANT PLS_INTEGER := -20503;
-    c_err_stale_preview     CONSTANT PLS_INTEGER := -20504;
     c_err_overlay           CONSTANT PLS_INTEGER := -20505;
-    c_err_verification      CONSTANT PLS_INTEGER := -20506;
-    c_err_restoration       CONSTANT PLS_INTEGER := -20507;
 
     c_no_change       CONSTANT VARCHAR2(30) := 'NO_CHANGE';
     c_remove_override CONSTANT VARCHAR2(30) := 'REMOVE_OVERRIDE';
@@ -55,6 +50,7 @@ DECLARE
         target_segment      VARCHAR2(3),
         record_type_code    hcfa_electronic_records.record_type_code%TYPE,
         desired_sto_proc    hcfa_electronic_records.sto_proc_name%TYPE,
+        source_template_level VARCHAR2(10),
         source_guid         hcfa_electronic_records.electronic_rec_guid%TYPE,
         source_her          hcfa_electronic_records%ROWTYPE,
         source_hefs         t_hef_rows,
@@ -68,6 +64,7 @@ DECLARE
         existing_her_count  PLS_INTEGER,
         existing_hef_count  PLS_INTEGER,
         source_equals_desired VARCHAR2(1),
+        current_matches_desired VARCHAR2(1),
         target_action       VARCHAR2(30),
         new_guid            hcfa_electronic_records.electronic_rec_guid%TYPE,
         deleted_hefs        PLS_INTEGER,
@@ -88,8 +85,14 @@ DECLARE
 
     l_targets              t_target_states;
     l_atoms                t_atoms;
-    l_mode                 VARCHAR2(20);
+    l_line_of_business     VARCHAR2(20);
+    l_cbsa                 VARCHAR2(1);
+    l_fips                 VARCHAR2(1);
+    l_care_location        VARCHAR2(1);
+    l_patient_entered      VARCHAR2(1);
+    l_covered_days         VARCHAR2(1);
     l_option_code          VARCHAR2(100);
+    l_selection_label      VARCHAR2(200);
     l_payor_guid           payors.payor_guid%TYPE;
     l_plan_guid            pfc.plan_guid%TYPE;
     l_audit_user           hcfa_electronic_records.rec_ent_user%TYPE;
@@ -101,15 +104,7 @@ DECLARE
     l_user_template_guid   pfc.user_form_template_guid%TYPE;
     l_cpd_start_date       pfc.cpd_start_date%TYPE;
     l_cpd_end_date         pfc.cpd_end_date%TYPE;
-    l_expected_hash        VARCHAR2(64);
     l_recalculated_hash    VARCHAR2(64);
-    l_pre_apply_hash       VARCHAR2(64);
-    l_post_rollback_hash   VARCHAR2(64);
-    l_pre_her_counts       t_number_rows;
-    l_pre_hef_counts       t_number_rows;
-    l_pre_actions          t_text_rows;
-    l_savepoint_set        BOOLEAN := FALSE;
-    l_dml_started          BOOLEAN := FALSE;
 
     FUNCTION values_equal (
         p_left  IN VARCHAR2,
@@ -337,14 +332,12 @@ DECLARE
     BEGIN
         l_targets.DELETE;
         l_targets(1).target_order := 1;
-        l_targets(1).target_segment := 'PRV';
-        l_targets(1).record_type_code := 'B2000A0030PRV080';
-
-        IF l_mode = 'ON' THEN
-            l_targets(1).desired_sto_proc := 'RETURN_1';
-        ELSE
-            l_targets(1).desired_sto_proc := 'RETURN_0';
-        END IF;
+        l_targets(1).target_segment := 'HI';
+        l_targets(1).record_type_code := 'D23002310HI286';
+        l_targets(1).desired_sto_proc := CASE
+            WHEN l_option_code LIKE '%|N|N|N|N|N' THEN NULL
+            ELSE 'RETURN_1'
+        END;
     END initialize_targets;
 
     PROCEDURE validate_inputs
@@ -352,26 +345,48 @@ DECLARE
     BEGIN
         l_payor_guid := TRIM(c_payor_guid);
         l_plan_guid := TRIM(c_plan_guid);
-        l_mode := UPPER(TRIM(c_provider_taxonomy));
-        l_expected_hash := UPPER(TRIM(c_expected_preview_state_hash));
+        l_line_of_business := UPPER(TRIM(c_line_of_business));
+        l_cbsa := UPPER(TRIM(c_cbsa));
+        l_fips := UPPER(TRIM(c_fips));
+        l_care_location := UPPER(TRIM(c_care_location_value_code));
+        l_patient_entered := UPPER(TRIM(c_patient_entered_value_code));
+        l_covered_days := UPPER(TRIM(c_covered_days_value_code));
         l_audit_user := TRIM(c_audit_user);
 
-        IF c_safety_token <> 'ROLLBACK_ONLY_PROVIDER_TAXONOMY' THEN
-            RAISE_APPLICATION_ERROR(c_err_invalid_input,
-                'SAFETY TOKEN INVALID: rollback-only APPLY refused.');
-        END IF;
         IF l_payor_guid IS NULL OR l_payor_guid = 'PUT_PAYOR_GUID_HERE' THEN
             RAISE_APPLICATION_ERROR(c_err_invalid_input,
                 'PAYOR_GUID is required.');
         END IF;
-        IF l_mode NOT IN ('ON', 'OFF') THEN
+        IF l_line_of_business NOT IN ('HOME_HEALTH', 'HOSPICE') THEN
             RAISE_APPLICATION_ERROR(c_err_invalid_input,
-                'PROVIDER_TAXONOMY must be ON or OFF.');
+                'LINE_OF_BUSINESS must be HOME_HEALTH or HOSPICE.');
         END IF;
-        IF l_expected_hash IS NULL
-           OR NOT REGEXP_LIKE(l_expected_hash, '^[0-9A-F]{64}$') THEN
+        IF l_cbsa NOT IN ('Y', 'N') OR l_fips NOT IN ('Y', 'N')
+           OR l_care_location NOT IN ('Y', 'N')
+           OR l_patient_entered NOT IN ('Y', 'N')
+           OR l_covered_days NOT IN ('Y', 'N') THEN
             RAISE_APPLICATION_ERROR(c_err_invalid_input,
-                'A 64-character EXPECTED_PREVIEW_STATE_HASH is mandatory.');
+                'Every Value Codes selection must be Y or N.');
+        END IF;
+        IF l_line_of_business = 'HOME_HEALTH' THEN
+            IF l_care_location = 'Y' OR l_patient_entered = 'Y'
+               OR l_covered_days = 'Y' THEN
+                RAISE_APPLICATION_ERROR(c_err_invalid_input,
+                    'Home Health cannot use Hospice selections.');
+            END IF;
+            IF l_fips = 'Y' AND l_cbsa = 'N' THEN
+                RAISE_APPLICATION_ERROR(c_err_invalid_input,
+                    'FIPS requires CBSA.');
+            END IF;
+        ELSE
+            IF l_cbsa = 'Y' OR l_fips = 'Y' THEN
+                RAISE_APPLICATION_ERROR(c_err_invalid_input,
+                    'Hospice cannot use Home Health selections.');
+            END IF;
+            IF l_care_location = 'Y' AND l_patient_entered = 'Y' THEN
+                RAISE_APPLICATION_ERROR(c_err_invalid_input,
+                    'Care-location and patient-entered are mutually exclusive.');
+            END IF;
         END IF;
         IF l_audit_user IS NULL
            OR l_audit_user = 'PUT_AUDIT_USER_HERE'
@@ -380,15 +395,31 @@ DECLARE
                 'A valid AUDIT_USER is required.');
         END IF;
 
-        IF l_mode = 'ON' THEN
-            l_option_code := 'PROVIDER_TAXONOMY_ON';
+        l_option_code := 'VALUE_CODES|' || l_line_of_business || '|' ||
+            l_cbsa || '|' || l_fips || '|' || l_care_location || '|' ||
+            l_patient_entered || '|' || l_covered_days;
+        IF l_cbsa = 'N' AND l_fips = 'N' AND l_care_location = 'N'
+           AND l_patient_entered = 'N' AND l_covered_days = 'N' THEN
+            l_selection_label := 'Default';
+        ELSIF l_line_of_business = 'HOME_HEALTH' AND l_fips = 'Y' THEN
+            l_selection_label := 'CBSA and FIPS';
+        ELSIF l_line_of_business = 'HOME_HEALTH' THEN
+            l_selection_label := 'CBSA';
+        ELSIF l_care_location = 'Y' AND l_covered_days = 'Y' THEN
+            l_selection_label := 'Care-location value code 61/G8 and VC80/days';
+        ELSIF l_care_location = 'Y' THEN
+            l_selection_label := 'Care-location value code 61/G8';
+        ELSIF l_patient_entered = 'Y' AND l_covered_days = 'Y' THEN
+            l_selection_label := 'Patient-entered value code and VC80/days';
+        ELSIF l_patient_entered = 'Y' THEN
+            l_selection_label := 'Patient-entered value code and amount';
         ELSE
-            l_option_code := 'PROVIDER_TAXONOMY_OFF';
+            l_selection_label := 'Value code 80 with days covered';
         END IF;
         initialize_targets;
     END validate_inputs;
 
-    PROCEDURE resolve_and_lock_pfc
+    PROCEDURE resolve_pfc
     IS
         l_winner_count PLS_INTEGER;
         l_lock_guid    pfc.pfc_guid%TYPE;
@@ -397,7 +428,7 @@ DECLARE
         INTO l_payor_type_guid
         FROM payors payor
         WHERE payor.payor_guid = l_payor_guid
-        FOR UPDATE;
+        ;
 
         SELECT
             COUNT(*),
@@ -456,14 +487,14 @@ DECLARE
         INTO l_lock_guid
         FROM pfc p
         WHERE p.pfc_guid = l_pfc_guid
-        FOR UPDATE;
+        ;
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
             RAISE_APPLICATION_ERROR(c_err_resolution,
                 'PAYOR/PFC resolution failed.');
-    END resolve_and_lock_pfc;
+    END resolve_pfc;
 
-    PROCEDURE resolve_and_lock_source (p_target_index IN PLS_INTEGER)
+    PROCEDURE resolve_source (p_target_index IN PLS_INTEGER)
     IS
         l_source_count PLS_INTEGER;
         l_lock_guid    hcfa_electronic_records.electronic_rec_guid%TYPE;
@@ -531,13 +562,21 @@ DECLARE
         INTO l_targets(p_target_index).source_her
         FROM hcfa_electronic_records h
         WHERE h.electronic_rec_guid = l_targets(p_target_index).source_guid
-        FOR UPDATE;
+        ;
+
+        l_targets(p_target_index).source_template_level := CASE
+            WHEN l_targets(p_target_index).source_her.user_form_template_guid
+                    IS NOT NULL THEN 'USER'
+            WHEN l_targets(p_target_index).source_her.form_template_guid
+                    IS NOT NULL THEN 'FORM'
+            ELSE 'BILLING'
+        END;
 
         SELECT h.electronic_rec_guid
         INTO l_lock_guid
         FROM hcfa_electronic_records h
         WHERE h.electronic_rec_guid = l_targets(p_target_index).source_guid
-        FOR UPDATE;
+        ;
 
         l_targets(p_target_index).source_hefs.DELETE;
         SELECT f.* BULK COLLECT
@@ -546,8 +585,8 @@ DECLARE
         WHERE f.electronic_rec_guid = l_targets(p_target_index).source_guid
         ORDER BY f.field_number, f.order_num NULLS FIRST,
                  f.position_from, f.position_thru
-        FOR UPDATE;
-    END resolve_and_lock_source;
+        ;
+    END resolve_source;
 
     PROCEDURE set_hef_value (
         p_target_index IN PLS_INTEGER,
@@ -599,6 +638,25 @@ DECLARE
         END IF;
     END set_hef_value;
 
+    PROCEDURE set_managed_pair (
+        p_target_index IN PLS_INTEGER,
+        p_field_number IN VARCHAR2,
+        p_sto_proc_name IN VARCHAR2,
+        p_hard_coded_data IN VARCHAR2
+    ) IS
+    BEGIN
+        IF p_sto_proc_name IS NOT NULL THEN
+            set_hef_value(p_target_index, p_field_number,
+                'HI' || p_field_number, 'STO_PROC_NAME', p_sto_proc_name);
+        ELSIF p_hard_coded_data IS NOT NULL THEN
+            set_hef_value(p_target_index, p_field_number,
+                'HI' || p_field_number, 'HARD_CODED_DATA', p_hard_coded_data);
+        ELSE
+            RAISE_APPLICATION_ERROR(c_err_overlay,
+                'A managed Value Codes pair must select one value mechanism.');
+        END IF;
+    END set_managed_pair;
+
     PROCEDURE build_desired_state (p_target_index IN PLS_INTEGER)
     IS
         l_index PLS_INTEGER;
@@ -607,16 +665,71 @@ DECLARE
             l_targets(p_target_index).source_her;
         l_targets(p_target_index).overlay_hefs :=
             l_targets(p_target_index).source_hefs;
-        l_targets(p_target_index).overlay_her.sto_proc_name :=
-            l_targets(p_target_index).desired_sto_proc;
-
-        set_hef_value(
-            p_target_index,
-            '03',
-            'PRV03',
-            'STO_PROC_NAME',
-            'G_PROVIDER_TAXONOMY_CODE'
-        );
+        IF l_cbsa = 'N' AND l_fips = 'N' AND l_care_location = 'N'
+           AND l_patient_entered = 'N' AND l_covered_days = 'N' THEN
+            l_targets(p_target_index).desired_sto_proc :=
+                l_targets(p_target_index).source_her.sto_proc_name;
+        ELSE
+            l_targets(p_target_index).desired_sto_proc := 'RETURN_1';
+            l_targets(p_target_index).overlay_her.sto_proc_name := 'RETURN_1';
+            IF l_line_of_business = 'HOME_HEALTH' THEN
+                set_managed_pair(p_target_index, '012', NULL, '61');
+                set_managed_pair(p_target_index, '015',
+                    'GET_PAT_CBSA_CODE', NULL);
+                IF l_fips = 'Y' THEN
+                    set_managed_pair(p_target_index, '022',
+                        'GET_FIPS_CODE', NULL);
+                    set_managed_pair(p_target_index, '025',
+                        'GET_FIPS_CODE_VALUE', NULL);
+                ELSE
+                    set_managed_pair(p_target_index, '022',
+                        'GET_VAL_CODE', NULL);
+                    set_managed_pair(p_target_index, '025',
+                        'GET_VAL_CODE_AMT', NULL);
+                END IF;
+            ELSIF l_care_location = 'Y' AND l_covered_days = 'Y' THEN
+                set_managed_pair(p_target_index, '012', NULL, '61');
+                set_managed_pair(p_target_index, '015',
+                    'GET_PAT_CBSA_CODE', NULL);
+                set_managed_pair(p_target_index, '022', NULL, '80');
+                set_managed_pair(p_target_index, '025',
+                    'GET_DISTINCT_COVERED_DAYS', NULL);
+            ELSIF l_care_location = 'Y' THEN
+                set_managed_pair(p_target_index, '012',
+                    'GET_CARE_LOC_CODE', NULL);
+                set_managed_pair(p_target_index, '015',
+                    'GET_CARE_LOC_VAL_CODE', NULL);
+                set_managed_pair(p_target_index, '022',
+                    'GET_VAL_CODE', NULL);
+                set_managed_pair(p_target_index, '025',
+                    'GET_VAL_CODE_AMT', NULL);
+            ELSIF l_patient_entered = 'Y' AND l_covered_days = 'Y' THEN
+                set_managed_pair(p_target_index, '012',
+                    'GET_VAL_CODE', NULL);
+                set_managed_pair(p_target_index, '015',
+                    'GET_VAL_CODE_AMT', NULL);
+                set_managed_pair(p_target_index, '022', NULL, '80');
+                set_managed_pair(p_target_index, '025',
+                    'GET_DISTINCT_COVERED_DAYS', NULL);
+            ELSIF l_patient_entered = 'Y' THEN
+                set_managed_pair(p_target_index, '012',
+                    'GET_VAL_CODE', NULL);
+                set_managed_pair(p_target_index, '015',
+                    'GET_VAL_CODE_AMT', NULL);
+                set_managed_pair(p_target_index, '022',
+                    'GET_VAL_CODE', NULL);
+                set_managed_pair(p_target_index, '025',
+                    'GET_VAL_CODE_AMT', NULL);
+            ELSE
+                set_managed_pair(p_target_index, '012', NULL, '80');
+                set_managed_pair(p_target_index, '015',
+                    'GET_DISTINCT_COVERED_DAYS', NULL);
+                set_managed_pair(p_target_index, '022',
+                    'GET_VAL_CODE', NULL);
+                set_managed_pair(p_target_index, '025',
+                    'GET_VAL_CODE_AMT', NULL);
+            END IF;
+        END IF;
 
         IF configurations_equal(
             l_targets(p_target_index).source_her,
@@ -656,7 +769,7 @@ DECLARE
         END LOOP;
     END build_desired_state;
 
-    PROCEDURE read_and_lock_current (p_target_index IN PLS_INTEGER)
+    PROCEDURE read_current (p_target_index IN PLS_INTEGER)
     IS
     BEGIN
         l_targets(p_target_index).current_hers.DELETE;
@@ -670,7 +783,7 @@ DECLARE
           AND h.billing_form_code = l_billing_form_code
           AND h.record_type_code = l_targets(p_target_index).record_type_code
         ORDER BY h.electronic_rec_guid
-        FOR UPDATE;
+        ;
 
         SELECT f.* BULK COLLECT
         INTO l_targets(p_target_index).current_hefs
@@ -686,7 +799,7 @@ DECLARE
         )
         ORDER BY f.electronic_rec_guid, f.field_number,
                  f.order_num NULLS FIRST, f.position_from
-        FOR UPDATE;
+        ;
 
         l_targets(p_target_index).existing_her_count :=
             l_targets(p_target_index).current_hers.COUNT;
@@ -700,17 +813,14 @@ DECLARE
             WHERE f.electronic_rec_guid =
                 l_targets(p_target_index).current_hers(1).electronic_rec_guid;
         END IF;
-    END read_and_lock_current;
+    END read_current;
 
     PROCEDURE decide_target_action (p_target_index IN PLS_INTEGER)
     IS
     BEGIN
-        IF l_targets(p_target_index).source_equals_desired = 'Y' THEN
-            IF l_targets(p_target_index).existing_her_count = 0 THEN
-                l_targets(p_target_index).target_action := c_no_change;
-            ELSE
-                l_targets(p_target_index).target_action := c_remove_override;
-            END IF;
+        IF l_targets(p_target_index).existing_her_count = 0 THEN
+            l_targets(p_target_index).current_matches_desired :=
+                l_targets(p_target_index).source_equals_desired;
         ELSIF l_targets(p_target_index).existing_her_count = 1
           AND payor_configurations_equal(
                 l_targets(p_target_index).current_hers(1),
@@ -718,6 +828,17 @@ DECLARE
                 l_targets(p_target_index).desired_her,
                 l_targets(p_target_index).desired_hefs
               ) THEN
+            l_targets(p_target_index).current_matches_desired := 'Y';
+        ELSE
+            l_targets(p_target_index).current_matches_desired := 'N';
+        END IF;
+        IF l_targets(p_target_index).source_equals_desired = 'Y' THEN
+            IF l_targets(p_target_index).existing_her_count = 0 THEN
+                l_targets(p_target_index).target_action := c_no_change;
+            ELSE
+                l_targets(p_target_index).target_action := c_remove_override;
+            END IF;
+        ELSIF l_targets(p_target_index).current_matches_desired = 'Y' THEN
             l_targets(p_target_index).target_action := c_no_change;
         ELSE
             l_targets(p_target_index).target_action := c_rebuild_override;
@@ -727,11 +848,11 @@ DECLARE
     PROCEDURE resolve_locked_state
     IS
     BEGIN
-        resolve_and_lock_pfc;
+        resolve_pfc;
         FOR i IN 1 .. l_targets.COUNT LOOP
-            resolve_and_lock_source(i);
+            resolve_source(i);
             build_desired_state(i);
-            read_and_lock_current(i);
+            read_current(i);
             decide_target_action(i);
         END LOOP;
     END resolve_locked_state;
@@ -827,7 +948,8 @@ DECLARE
             'CONTEXT',
             'CONTEXT|' || shown(l_option_code) || '|' ||
             shown(l_payor_guid) || '|' || shown(l_plan_guid) || '|' ||
-            shown(l_pfc_guid) || '|' || shown(l_payor_type_guid) || '|' ||
+            shown(l_pfc_guid) || '|' || shown(l_pfc_plan_guid) || '|' ||
+            shown(l_payor_type_guid) || '|' ||
             shown(l_billing_form_code) || '|' ||
             shown(l_form_template_guid) || '|' ||
             shown(l_user_template_guid) || '|' ||
@@ -973,435 +1095,120 @@ DECLARE
         FROM dual;
     END calculate_preview_state_hash;
 
-    PROCEDURE assign_new_guids
+    PROCEDURE print_preview
     IS
-    BEGIN
-        FOR i IN 1 .. l_targets.COUNT LOOP
-            IF l_targets(i).target_action = c_rebuild_override THEN
-                SELECT RAWTOHEX(SYS_GUID())
-                INTO l_targets(i).new_guid
-                FROM dual;
-            ELSE
-                l_targets(i).new_guid := NULL;
-            END IF;
-        END LOOP;
-    END assign_new_guids;
-
-    PROCEDURE delete_all_target_hefs
-    IS
-    BEGIN
-        FOR i IN 1 .. l_targets.COUNT LOOP
-            l_targets(i).deleted_hefs := 0;
-            IF l_targets(i).target_action IN (
-                c_remove_override, c_rebuild_override
-            ) THEN
-                l_dml_started := TRUE;
-                DELETE FROM hcfa_electronic_fields f
-                WHERE EXISTS (
-                    SELECT 1
-                    FROM hcfa_electronic_records h
-                    WHERE h.electronic_rec_guid = f.electronic_rec_guid
-                      AND h.payor_guid = l_payor_guid
-                      AND h.billing_form_code = l_billing_form_code
-                      AND h.record_type_code = l_targets(i).record_type_code
-                );
-                l_targets(i).deleted_hefs := SQL%ROWCOUNT;
-            END IF;
-            DBMS_OUTPUT.PUT_LINE(
-                l_targets(i).target_segment || ' deleted HEFs: ' ||
-                l_targets(i).deleted_hefs
-            );
-        END LOOP;
-    END delete_all_target_hefs;
-
-    PROCEDURE delete_all_target_hers
-    IS
-    BEGIN
-        FOR i IN 1 .. l_targets.COUNT LOOP
-            l_targets(i).deleted_hers := 0;
-            IF l_targets(i).target_action IN (
-                c_remove_override, c_rebuild_override
-            ) THEN
-                l_dml_started := TRUE;
-                DELETE FROM hcfa_electronic_records h
-                WHERE h.payor_guid = l_payor_guid
-                  AND h.billing_form_code = l_billing_form_code
-                  AND h.record_type_code = l_targets(i).record_type_code;
-                l_targets(i).deleted_hers := SQL%ROWCOUNT;
-            END IF;
-            DBMS_OUTPUT.PUT_LINE(
-                l_targets(i).target_segment || ' deleted HERs: ' ||
-                l_targets(i).deleted_hers
-            );
-        END LOOP;
-    END delete_all_target_hers;
-
-    PROCEDURE insert_all_target_hers
-    IS
-    BEGIN
-        FOR i IN 1 .. l_targets.COUNT LOOP
-            l_targets(i).inserted_hers := 0;
-            IF l_targets(i).target_action = c_rebuild_override THEN
-                l_dml_started := TRUE;
-                INSERT INTO hcfa_electronic_records (
-                    electronic_rec_guid, loop_id, contiguity_ind,
-                    billing_form_code, record_name, record_type_code,
-                    record_size, mandatory_ind, req_for_claim_ind,
-                    payor_type_guid, payor_guid, plan_guid, type_of_bill,
-                    detail_ind, max_number, invoice_ind, form_template_guid,
-                    carry_forward_ind, max_carry_forward, sto_proc_name,
-                    user_form_template_guid, notes, rec_ent_date,
-                    rec_ent_user, rec_mod_date, rec_mod_user,
-                    include_record_data_onclaim
-                ) VALUES (
-                    l_targets(i).new_guid,
-                    l_targets(i).desired_her.loop_id,
-                    l_targets(i).desired_her.contiguity_ind,
-                    l_targets(i).desired_her.billing_form_code,
-                    l_targets(i).desired_her.record_name,
-                    l_targets(i).desired_her.record_type_code,
-                    l_targets(i).desired_her.record_size,
-                    l_targets(i).desired_her.mandatory_ind,
-                    l_targets(i).desired_her.req_for_claim_ind,
-                    l_targets(i).desired_her.payor_type_guid,
-                    l_targets(i).desired_her.payor_guid,
-                    l_targets(i).desired_her.plan_guid,
-                    l_targets(i).desired_her.type_of_bill,
-                    l_targets(i).desired_her.detail_ind,
-                    l_targets(i).desired_her.max_number,
-                    l_targets(i).desired_her.invoice_ind,
-                    l_targets(i).desired_her.form_template_guid,
-                    l_targets(i).desired_her.carry_forward_ind,
-                    l_targets(i).desired_her.max_carry_forward,
-                    l_targets(i).desired_her.sto_proc_name,
-                    l_targets(i).desired_her.user_form_template_guid,
-                    l_targets(i).desired_her.notes,
-                    SYSDATE,
-                    l_audit_user,
-                    NULL,
-                    NULL,
-                    l_targets(i).desired_her.include_record_data_onclaim
-                );
-                l_targets(i).inserted_hers := SQL%ROWCOUNT;
-            END IF;
-            DBMS_OUTPUT.PUT_LINE(
-                l_targets(i).target_segment || ' inserted HERs: ' ||
-                l_targets(i).inserted_hers
-            );
-        END LOOP;
-    END insert_all_target_hers;
-
-    PROCEDURE insert_all_target_hefs
-    IS
+        l_change_count PLS_INTEGER := 0;
+        l_new_hef_count PLS_INTEGER := 0;
+        l_status VARCHAR2(20);
+        l_current_hef_count PLS_INTEGER;
         l_index PLS_INTEGER;
     BEGIN
-        FOR i IN 1 .. l_targets.COUNT LOOP
-            l_targets(i).cloned_hefs := 0;
-            IF l_targets(i).target_action = c_rebuild_override THEN
-                l_index := l_targets(i).desired_hefs.FIRST;
-                WHILE l_index IS NOT NULL LOOP
-                    l_dml_started := TRUE;
-                    INSERT INTO hcfa_electronic_fields (
-                        field_number, electronic_rec_guid, field_name,
-                        record_type_code, sto_proc_name, pic, field_spec,
-                        position_from, position_thru, field_name_desc,
-                        mandatory_ind, must_fit_length_ind, order_num,
-                        repeats, detail_ind, occurs_next, hard_coded_data,
-                        field_format, caps_ind, required_subelement_ind,
-                        rec_ent_date, rec_ent_user, rec_mod_date,
-                        rec_mod_user, include_data_onclaim
-                    ) VALUES (
-                        l_targets(i).desired_hefs(l_index).field_number,
-                        l_targets(i).new_guid,
-                        l_targets(i).desired_hefs(l_index).field_name,
-                        l_targets(i).desired_hefs(l_index).record_type_code,
-                        l_targets(i).desired_hefs(l_index).sto_proc_name,
-                        l_targets(i).desired_hefs(l_index).pic,
-                        l_targets(i).desired_hefs(l_index).field_spec,
-                        l_targets(i).desired_hefs(l_index).position_from,
-                        l_targets(i).desired_hefs(l_index).position_thru,
-                        l_targets(i).desired_hefs(l_index).field_name_desc,
-                        l_targets(i).desired_hefs(l_index).mandatory_ind,
-                        l_targets(i).desired_hefs(l_index).must_fit_length_ind,
-                        l_targets(i).desired_hefs(l_index).order_num,
-                        l_targets(i).desired_hefs(l_index).repeats,
-                        l_targets(i).desired_hefs(l_index).detail_ind,
-                        l_targets(i).desired_hefs(l_index).occurs_next,
-                        l_targets(i).desired_hefs(l_index).hard_coded_data,
-                        l_targets(i).desired_hefs(l_index).field_format,
-                        l_targets(i).desired_hefs(l_index).caps_ind,
-                        l_targets(i).desired_hefs(l_index)
-                            .required_subelement_ind,
-                        SYSDATE,
-                        l_audit_user,
-                        NULL,
-                        NULL,
-                        l_targets(i).desired_hefs(l_index).include_data_onclaim
-                    );
-                    l_targets(i).cloned_hefs :=
-                        l_targets(i).cloned_hefs + SQL%ROWCOUNT;
-                    l_index := l_targets(i).desired_hefs.NEXT(l_index);
-                END LOOP;
-            END IF;
-            DBMS_OUTPUT.PUT_LINE(
-                l_targets(i).target_segment || ' cloned HEFs: ' ||
-                l_targets(i).cloned_hefs
-            );
-        END LOOP;
-    END insert_all_target_hefs;
-
-    PROCEDURE verify_temporary_state
-    IS
-        l_her_count   PLS_INTEGER;
-        l_hef_count   PLS_INTEGER;
-        l_audit_count PLS_INTEGER;
-        l_prv03_count PLS_INTEGER;
-        l_actual_her  hcfa_electronic_records%ROWTYPE;
-        l_actual_hefs t_hef_rows;
-    BEGIN
-        DBMS_OUTPUT.PUT_LINE('--- TEMPORARY CANONICAL VERIFICATION ---');
-        FOR i IN 1 .. l_targets.COUNT LOOP
-            SELECT
-                COUNT(DISTINCT h.electronic_rec_guid),
-                COUNT(f.electronic_rec_guid)
-            INTO l_her_count, l_hef_count
-            FROM hcfa_electronic_records h
-            LEFT JOIN hcfa_electronic_fields f
-              ON f.electronic_rec_guid = h.electronic_rec_guid
-            WHERE h.payor_guid = l_payor_guid
-              AND h.billing_form_code = l_billing_form_code
-              AND h.record_type_code = l_targets(i).record_type_code;
-
-            IF l_targets(i).source_equals_desired = 'Y' THEN
-                IF l_her_count <> 0 OR l_hef_count <> 0 THEN
-                    RAISE_APPLICATION_ERROR(c_err_verification,
-                        l_targets(i).target_segment ||
-                        ' should have zero payor overrides.');
-                END IF;
-            ELSE
-                IF l_her_count <> 1
-                   OR l_hef_count <> l_targets(i).desired_hefs.COUNT THEN
-                    RAISE_APPLICATION_ERROR(c_err_verification,
-                        l_targets(i).target_segment ||
-                        ' temporary HER/HEF counts are not canonical.');
-                END IF;
-
-                SELECT h.*
-                INTO l_actual_her
-                FROM hcfa_electronic_records h
-                WHERE h.payor_guid = l_payor_guid
-                  AND h.billing_form_code = l_billing_form_code
-                  AND h.record_type_code = l_targets(i).record_type_code;
-
-                l_actual_hefs.DELETE;
-                SELECT f.* BULK COLLECT
-                INTO l_actual_hefs
-                FROM hcfa_electronic_fields f
-                WHERE f.electronic_rec_guid = l_actual_her.electronic_rec_guid;
-
-                IF NOT payor_configurations_equal(
-                    l_actual_her,
-                    l_actual_hefs,
-                    l_targets(i).desired_her,
-                    l_targets(i).desired_hefs
-                ) THEN
-                    RAISE_APPLICATION_ERROR(c_err_verification,
-                        l_targets(i).target_segment ||
-                        ' temporary HER/HEF multiset does not match desired.');
-                END IF;
-                SELECT COUNT(*)
-                INTO l_prv03_count
-                FROM hcfa_electronic_fields f
-                WHERE f.electronic_rec_guid =
-                        l_actual_her.electronic_rec_guid
-                  AND f.field_number = '03'
-                  AND f.field_name = 'PRV03'
-                  AND f.sto_proc_name = 'G_PROVIDER_TAXONOMY_CODE'
-                  AND f.hard_coded_data IS NULL;
-                IF l_prv03_count <> 1 THEN
-                    RAISE_APPLICATION_ERROR(c_err_verification,
-                        'Provider Taxonomy must contain exactly one ' ||
-                        'canonical PRV03.');
-                END IF;
-                IF NOT values_equal(
-                    l_actual_her.payor_type_guid,
-                    l_payor_type_guid
-                )
-                   OR l_actual_her.carry_forward_ind IS NOT NULL
-                   OR NOT values_equal(
-                        l_actual_her.include_record_data_onclaim,
-                        'Y'
-                      ) THEN
-                    RAISE_APPLICATION_ERROR(c_err_verification,
-                        l_targets(i).target_segment ||
-                        ' payor-specific HER metadata is not canonical.');
-                END IF;
-                IF NOT values_equal(
-                    l_actual_her.form_template_guid,
-                    l_targets(i).source_her.form_template_guid
-                )
-                   OR NOT values_equal(
-                        l_actual_her.user_form_template_guid,
-                        l_targets(i).source_her.user_form_template_guid
-                      ) THEN
-                    RAISE_APPLICATION_ERROR(c_err_verification,
-                        l_targets(i).target_segment ||
-                        ' source template scope was not preserved.');
-                END IF;
-
-                IF l_pre_actions(i) = c_rebuild_override THEN
-                    SELECT COUNT(*)
-                    INTO l_audit_count
-                    FROM hcfa_electronic_fields f
-                    WHERE f.electronic_rec_guid = l_actual_her.electronic_rec_guid
-                      AND f.rec_ent_date IS NOT NULL
-                      AND f.rec_ent_user = l_audit_user
-                      AND f.rec_mod_date IS NULL
-                      AND f.rec_mod_user IS NULL;
-                    IF l_actual_her.rec_ent_date IS NULL
-                       OR l_actual_her.rec_ent_user <> l_audit_user
-                       OR l_actual_her.rec_mod_date IS NOT NULL
-                       OR l_actual_her.rec_mod_user IS NOT NULL
-                       OR l_audit_count <> l_actual_hefs.COUNT THEN
-                        RAISE_APPLICATION_ERROR(c_err_verification,
-                            l_targets(i).target_segment ||
-                            ' inserted audit values are not canonical.');
-                    END IF;
-                END IF;
-            END IF;
-
-            DBMS_OUTPUT.PUT_LINE(
-                l_targets(i).target_segment || ' VERIFY PASS: ' ||
-                l_her_count || ' HER / ' || l_hef_count || ' HEFs'
-            );
-        END LOOP;
-    END verify_temporary_state;
-
-    PROCEDURE verify_restoration
-    IS
-    BEGIN
-        initialize_targets;
-        resolve_locked_state;
-        calculate_preview_state_hash(l_post_rollback_hash);
-        FOR i IN 1 .. l_targets.COUNT LOOP
-            IF l_targets(i).existing_her_count <> l_pre_her_counts(i)
-               OR l_targets(i).existing_hef_count <> l_pre_hef_counts(i) THEN
-                RAISE_APPLICATION_ERROR(c_err_restoration,
-                    l_targets(i).target_segment ||
-                    ' pre/post rollback counts differ.');
-            END IF;
-            DBMS_OUTPUT.PUT_LINE(
-                l_targets(i).target_segment || ' RESTORED: ' ||
-                l_targets(i).existing_her_count || ' HER / ' ||
-                l_targets(i).existing_hef_count || ' HEFs'
-            );
-        END LOOP;
-        IF l_post_rollback_hash <> l_pre_apply_hash THEN
-            RAISE_APPLICATION_ERROR(c_err_restoration,
-                'The post-rollback state hash does not match the pre-DML state.');
+        IF l_targets(1).target_action = c_no_change THEN
+            l_status := 'NO_CHANGE';
+        ELSE
+            l_status := 'PREVIEW';
         END IF;
-        DBMS_OUTPUT.PUT_LINE('POST-ROLLBACK HASH: ' || l_post_rollback_hash);
-        DBMS_OUTPUT.PUT_LINE('RESTORATION HASH MATCH: YES');
-    END verify_restoration;
+        IF l_targets(1).target_action = c_remove_override THEN
+            l_change_count := l_targets(1).existing_hef_count +
+                l_targets(1).existing_her_count;
+        ELSIF l_targets(1).target_action = c_rebuild_override THEN
+            l_change_count := l_targets(1).existing_hef_count +
+                l_targets(1).existing_her_count +
+                l_targets(1).desired_hefs.COUNT + 1;
+            l_new_hef_count := l_targets(1).desired_hefs.COUNT;
+        END IF;
+
+        DBMS_OUTPUT.PUT_LINE('==================================================');
+        DBMS_OUTPUT.PUT_LINE('STANDALONE VALUE CODES PREVIEW');
+        DBMS_OUTPUT.PUT_LINE('STATUS: ' || l_status);
+        DBMS_OUTPUT.PUT_LINE('LINE_OF_BUSINESS: ' || l_line_of_business);
+        DBMS_OUTPUT.PUT_LINE('SELECTION: ' || l_selection_label);
+        DBMS_OUTPUT.PUT_LINE('PAYOR_GUID: ' || l_payor_guid);
+        DBMS_OUTPUT.PUT_LINE('PLAN_GUID: ' || shown(l_plan_guid));
+        DBMS_OUTPUT.PUT_LINE('PFC_GUID: ' || l_pfc_guid);
+        DBMS_OUTPUT.PUT_LINE('BILLING_FORM_CODE: ' || l_billing_form_code);
+        DBMS_OUTPUT.PUT_LINE('RECORD_TYPE_CODE: ' ||
+            l_targets(1).record_type_code);
+        DBMS_OUTPUT.PUT_LINE('SOURCE_ELECTRONIC_REC_GUID: ' ||
+            l_targets(1).source_guid);
+        DBMS_OUTPUT.PUT_LINE('SOURCE_TEMPLATE_LEVEL: ' ||
+            l_targets(1).source_template_level);
+        DBMS_OUTPUT.PUT_LINE('SOURCE_HEF_COUNT: ' ||
+            l_targets(1).source_hefs.COUNT);
+        DBMS_OUTPUT.PUT_LINE('TARGET_ACTION: ' ||
+            l_targets(1).target_action);
+        DBMS_OUTPUT.PUT_LINE('EXISTING_PAYOR_HER_COUNT: ' ||
+            l_targets(1).existing_her_count);
+        DBMS_OUTPUT.PUT_LINE('EXISTING_PAYOR_HEF_COUNT: ' ||
+            l_targets(1).existing_hef_count);
+        DBMS_OUTPUT.PUT_LINE('NEW_COMPLETE_HEF_COUNT: ' ||
+            l_new_hef_count);
+        DBMS_OUTPUT.PUT_LINE('SOURCE_EQUALS_DESIRED: ' ||
+            l_targets(1).source_equals_desired);
+        DBMS_OUTPUT.PUT_LINE('CURRENT_MATCHES_DESIRED: ' ||
+            l_targets(1).current_matches_desired);
+        DBMS_OUTPUT.PUT_LINE('STATE_HASH: ' || l_recalculated_hash);
+        DBMS_OUTPUT.PUT_LINE('CHANGE_COUNT: ' || l_change_count);
+
+        DBMS_OUTPUT.PUT_LINE('--- MANAGED FIELD COMPARISON ---');
+        l_index := l_targets(1).source_hefs.FIRST;
+        WHILE l_index IS NOT NULL LOOP
+            IF (l_targets(1).source_hefs(l_index).field_number = '012'
+                AND l_targets(1).source_hefs(l_index).field_name = 'HI012')
+               OR (l_targets(1).source_hefs(l_index).field_number = '015'
+                AND l_targets(1).source_hefs(l_index).field_name = 'HI015')
+               OR (l_targets(1).source_hefs(l_index).field_number = '022'
+                AND l_targets(1).source_hefs(l_index).field_name = 'HI022')
+               OR (l_targets(1).source_hefs(l_index).field_number = '025'
+                AND l_targets(1).source_hefs(l_index).field_name = 'HI025') THEN
+                DBMS_OUTPUT.PUT_LINE(
+                    'FIELD ' || l_targets(1).source_hefs(l_index).field_number ||
+                    ': SOURCE STO=' ||
+                    shown(l_targets(1).source_hefs(l_index).sto_proc_name) ||
+                    ' HARD=' ||
+                    shown(l_targets(1).source_hefs(l_index).hard_coded_data) ||
+                    '; DESIRED STO=' ||
+                    shown(l_targets(1).desired_hefs(l_index).sto_proc_name) ||
+                    ' HARD=' ||
+                    shown(l_targets(1).desired_hefs(l_index).hard_coded_data)
+                );
+            END IF;
+            l_index := l_targets(1).source_hefs.NEXT(l_index);
+        END LOOP;
+
+        DBMS_OUTPUT.PUT_LINE('--- EXISTING PAYOR OVERRIDE DIAGNOSTICS ---');
+        l_index := l_targets(1).current_hers.FIRST;
+        WHILE l_index IS NOT NULL LOOP
+            SELECT COUNT(*) INTO l_current_hef_count
+            FROM hcfa_electronic_fields f
+            WHERE f.electronic_rec_guid =
+                l_targets(1).current_hers(l_index).electronic_rec_guid;
+            DBMS_OUTPUT.PUT_LINE(
+                'CURRENT_HER=' ||
+                l_targets(1).current_hers(l_index).electronic_rec_guid ||
+                ' PLAN=' ||
+                shown(l_targets(1).current_hers(l_index).plan_guid) ||
+                ' FORM_TEMPLATE=' ||
+                shown(l_targets(1).current_hers(l_index).form_template_guid) ||
+                ' USER_TEMPLATE=' ||
+                shown(l_targets(1).current_hers(l_index).user_form_template_guid) ||
+                ' STO=' ||
+                shown(l_targets(1).current_hers(l_index).sto_proc_name) ||
+                ' HEFS=' || l_current_hef_count
+            );
+            l_index := l_targets(1).current_hers.NEXT(l_index);
+        END LOOP;
+        IF l_targets(1).current_hers.COUNT = 0 THEN
+            DBMS_OUTPUT.PUT_LINE('CURRENT_HER=<NONE>');
+        END IF;
+        DBMS_OUTPUT.PUT_LINE('READ-ONLY PREVIEW: NO DML PERFORMED');
+        DBMS_OUTPUT.PUT_LINE('==================================================');
+    END print_preview;
 
 BEGIN
     validate_inputs;
-    SAVEPOINT provider_taxonomy_apply_test;
-    l_savepoint_set := TRUE;
-
     resolve_locked_state;
     calculate_preview_state_hash(l_recalculated_hash);
-    l_pre_apply_hash := l_recalculated_hash;
-
-    DBMS_OUTPUT.PUT_LINE('==================================================');
-    DBMS_OUTPUT.PUT_LINE('ROLLBACK-ONLY PROVIDER TAXONOMY APPLY');
-    DBMS_OUTPUT.PUT_LINE('PAYOR_GUID: ' || l_payor_guid);
-    DBMS_OUTPUT.PUT_LINE('PFC_GUID: ' || l_pfc_guid);
-    DBMS_OUTPUT.PUT_LINE('BILLING_FORM_CODE: ' || l_billing_form_code);
-    DBMS_OUTPUT.PUT_LINE('OPTION: ' || l_option_code);
-    DBMS_OUTPUT.PUT_LINE('EXPECTED PREVIEW HASH: ' || l_expected_hash);
-    DBMS_OUTPUT.PUT_LINE('RECALCULATED HASH: ' || l_recalculated_hash);
-
-        FOR i IN 1 .. l_targets.COUNT LOOP
-        l_pre_her_counts(i) := l_targets(i).existing_her_count;
-        l_pre_hef_counts(i) := l_targets(i).existing_hef_count;
-        l_pre_actions(i) := l_targets(i).target_action;
-        DBMS_OUTPUT.PUT_LINE(
-            l_targets(i).target_segment || ' SOURCE_GUID=' ||
-            l_targets(i).source_guid || ' SOURCE_HEFS=' ||
-            l_targets(i).source_hefs.COUNT || ' EXISTING=' ||
-            l_targets(i).existing_her_count || ' HER/' ||
-            l_targets(i).existing_hef_count || ' HEFs ACTION=' ||
-            l_targets(i).target_action
-        );
-    END LOOP;
-
-    IF l_recalculated_hash <> l_expected_hash THEN
-        DBMS_OUTPUT.PUT_LINE('HASH MATCH: NO');
-        DBMS_OUTPUT.PUT_LINE(
-            'STALE_PREVIEW: no DML was performed; rerun Preview 05.'
-        );
-        RAISE_APPLICATION_ERROR(c_err_stale_preview,
-            'STALE_PREVIEW: expected and recalculated hashes differ.');
-    END IF;
-    DBMS_OUTPUT.PUT_LINE('HASH MATCH: YES');
-
-    assign_new_guids;
-    DBMS_OUTPUT.PUT_LINE('--- TEMPORARY DML ---');
-    delete_all_target_hefs;
-    delete_all_target_hers;
-    insert_all_target_hers;
-    insert_all_target_hefs;
-    verify_temporary_state;
-
-    DBMS_OUTPUT.PUT_LINE('TEMPORARY APPLY VERIFICATION: PASS');
-    DBMS_OUTPUT.PUT_LINE('ROLLING BACK ALL PROVIDER TAXONOMY TEST DML...');
-    ROLLBACK TO provider_taxonomy_apply_test;
-    l_dml_started := FALSE;
-    verify_restoration;
-    ROLLBACK;
-    DBMS_OUTPUT.PUT_LINE(
-        'FINAL FULL ROLLBACK COMPLETE: all harness locks released.'
-    );
-
-    DBMS_OUTPUT.PUT_LINE('==================================================');
-    DBMS_OUTPUT.PUT_LINE('ROLLBACK-ONLY TEST COMPLETE:');
-    DBMS_OUTPUT.PUT_LINE(
-        'all Provider Taxonomy DML was rolled back and original state was restored.'
-    );
-    DBMS_OUTPUT.PUT_LINE('==================================================');
-EXCEPTION
-    WHEN OTHERS THEN
-        DBMS_OUTPUT.PUT_LINE('ROLLBACK-ONLY TEST FAILED: ' || SQLERRM);
-        IF l_savepoint_set THEN
-            BEGIN
-                ROLLBACK TO provider_taxonomy_apply_test;
-                l_dml_started := FALSE;
-                DBMS_OUTPUT.PUT_LINE(
-                    'FAILURE PATH: rolled back to provider_taxonomy_apply_test.'
-                );
-                IF l_pre_apply_hash IS NOT NULL THEN
-                    verify_restoration;
-                    DBMS_OUTPUT.PUT_LINE(
-                        'FAILURE PATH RESTORATION VERIFICATION: PASS'
-                    );
-                END IF;
-            EXCEPTION
-                WHEN OTHERS THEN
-                    DBMS_OUTPUT.PUT_LINE(
-                        'RESTORATION VERIFICATION FAILED PROMINENTLY: ' || SQLERRM
-                    );
-                    ROLLBACK;
-                    DBMS_OUTPUT.PUT_LINE(
-                        'FINAL FULL ROLLBACK COMPLETE ON FAILURE.'
-                    );
-                    RAISE;
-            END;
-        END IF;
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE(
-            'FINAL FULL ROLLBACK COMPLETE ON FAILURE.'
-        );
-        RAISE;
+    print_preview;
 END;
 /

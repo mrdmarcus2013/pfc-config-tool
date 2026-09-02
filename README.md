@@ -1,8 +1,14 @@
 # PFC Configuration Tool
 
+Standalone production validation is governed by
+[`docs/PRODUCTION_DATABASE_BOUNDARY.md`](docs/PRODUCTION_DATABASE_BOUNDARY.md).
+Every file under `database/production_tests/` must pass the automated boundary
+check before it is given to a database tester; tool-owned Oracle objects must
+never be installed in MatrixCare production to support a validation harness.
+
 PFC Configuration Tool includes a synthetic Oracle proof of concept, a thin
-FastAPI backend, and a React/Vite frontend for the first two configurable claim
-fields. Oracle is the authoritative configuration engine: the API validates
+FastAPI backend, and a React/Vite frontend for the configurable claim-field
+capabilities. Oracle is the authoritative configuration engine: the API validates
 request shape, manages transactions, invokes stored procedures, and returns
 user-safe results. It does not reproduce resolver or comparison logic in Python.
 
@@ -47,6 +53,9 @@ The initial API surface is:
 - `POST /api/config/line-of-business/save`
 - `POST /api/config/line-of-business/preview-change`
 - `POST /api/config/line-of-business/apply-change`
+- `POST /api/config/value-codes/current`
+- `POST /api/config/value-codes/preview`
+- `POST /api/config/value-codes/apply`
 
 Line of Business is stored once per payor as `HOME_HEALTH` or `HOSPICE`.
 Claim-field current, preview, and apply operations are unavailable until the
@@ -71,6 +80,16 @@ Clients send exactly one option code per preview or apply request. Service
 Facility remains one configuration operation even though Oracle manages its
 NM1, N3, and N4 targets atomically. There is no `NEVER` plus address `YES`
 configuration.
+
+Value Codes (UB-04 fields 39â€“41) uses the separate structured endpoints and
+never exposes its internal recipe identifiers. The request contains boolean
+capabilities: Home Health supports CBSA and CBSA with FIPS; Hospice supports
+care-location 61/G8, patient-entered value, and value code 80/days.
+Care-location and patient-entered are mutually exclusive; value code 80/days
+is independent, so Hospice has six valid states including Default. No
+selections means Default: inherit the complete source resolved by the normal
+MatrixCare hierarchy and keep no payor override. FIPS without CBSA, cross-LOB
+flags, and conflicting Hospice combinations fail safely.
 
 `POST /api/config/current` accepts `payor_guid`, nullable `plan_guid`, and
 `field_number` (`77` or `81`). It performs one read-only Oracle resolution and

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 
 GuidText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=36)]
@@ -158,3 +158,61 @@ class LineOfBusinessChangeResponse(BaseModel):
     preview_state_hash: StateHash
     summary: str
     debug_targets: list[ManagedTargetCount] = Field(default_factory=list)
+
+
+class ValueCodeSelections(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cbsa: bool = False
+    fips: bool = False
+    care_location_value_code: bool = False
+    patient_entered_value_code: bool = False
+    covered_days_value_code: bool = False
+
+    @model_validator(mode="after")
+    def validate_supported_shape(self) -> "ValueCodeSelections":
+        if self.fips and not self.cbsa:
+            raise ValueError("Add FIPS requires Add CBSA.")
+        if self.care_location_value_code and self.patient_entered_value_code:
+            raise ValueError(
+                "Care-location and patient-entered Hospice Value Codes cannot be selected together."
+            )
+        return self
+
+
+class ValueCodesCurrentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    payor_guid: GuidText
+    plan_guid: GuidText | None = None
+
+
+class ValueCodesChangeRequest(ValueCodesCurrentRequest):
+    selections: ValueCodeSelections
+    audit_user: GuidText
+
+
+class ValueCodesApplyRequest(ValueCodesChangeRequest):
+    expected_state_hash: StateHash
+
+
+class ValueCodesCurrentResponse(BaseModel):
+    configuration_status: Literal["RESOLVED"]
+    line_of_business: LineOfBusiness
+    is_default: bool
+    selections: ValueCodeSelections
+    canonical_status: str
+    display_summary: str
+    pfc_guid: str
+    debug: dict[str, object] = Field(default_factory=dict)
+
+
+class ValueCodesChangeResponse(BaseModel):
+    status: Literal["PREVIEW", "APPLIED", "NO_CHANGE"]
+    is_default: bool
+    selections: ValueCodeSelections
+    display_summary: str
+    state_hash: StateHash
+    change_count: int
+    summary: str
+    pfc_guid: str | None = None
+    debug_changes: list[TechnicalChange] = Field(default_factory=list)

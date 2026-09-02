@@ -54,6 +54,10 @@ SHOW ERRORS FUNCTION pfc_opt_provider_taxonomy_off
 SHOW ERRORS FUNCTION pfc_opt_service_facility
 @@../packages/pfc_option_registry.pks
 SHOW ERRORS PACKAGE pfc_option_registry
+@@../packages/pfc_value_codes.pks
+SHOW ERRORS PACKAGE pfc_value_codes
+@@../packages/pfc_value_codes.pkb
+SHOW ERRORS PACKAGE BODY pfc_value_codes
 @@../packages/pfc_option_registry.pkb
 SHOW ERRORS PACKAGE BODY pfc_option_registry
 

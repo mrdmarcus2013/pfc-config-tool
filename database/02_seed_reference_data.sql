@@ -462,4 +462,63 @@ WHERE f.electronic_rec_guid IN (
     '31000000-0000-0000-0000-000000000003'
 );
 
+/*
+ * Explicit synthetic Value Codes source. The fifth HEF is deliberately
+ * unmanaged so desired-state construction must preserve the complete source.
+ */
+INSERT INTO hcfa_electronic_records (
+    electronic_rec_guid, loop_id, contiguity_ind, billing_form_code,
+    record_name, record_type_code, record_size, mandatory_ind,
+    req_for_claim_ind, payor_type_guid, payor_guid, plan_guid,
+    type_of_bill, detail_ind, max_number, invoice_ind,
+    form_template_guid, carry_forward_ind, max_carry_forward,
+    sto_proc_name, user_form_template_guid, notes,
+    rec_ent_date, rec_ent_user, include_record_data_onclaim
+) VALUES (
+    '32000000-0000-0000-0000-000000000001', '2300', 'Y', '837I_5010',
+    'Synthetic Value Codes', 'D23002310HI286', 120, 'N',
+    'N', NULL, NULL, NULL, NULL, 'N', '2', 'N', NULL, 'N', 0,
+    'G_D2300231HI280_COUNT', NULL, 'Synthetic Value Codes default source',
+    DATE '2026-01-01', '90000000-0000-0000-0000-000000000001', 'Y'
+);
+
+INSERT ALL
+    INTO hcfa_electronic_fields VALUES (
+        '012', '32000000-0000-0000-0000-000000000001',
+        'HI012', 'D23002310HI286', 'GET_VAL_CODE',
+        'X(2)', 'A', 12, 13, 'Synthetic Value Code slot 1', 'N', 'Y',
+        1, 1, 'N', '015', NULL, NULL, 'Y', 'N', DATE '2026-01-01',
+        '90000000-0000-0000-0000-000000000001', NULL, NULL, 'Y'
+    )
+    INTO hcfa_electronic_fields VALUES (
+        '015', '32000000-0000-0000-0000-000000000001',
+        'HI015', 'D23002310HI286', 'GET_VAL_CODE_AMT',
+        'X(12)', 'A', 15, 26, 'Synthetic Value amount slot 1', 'N', 'Y',
+        2, 1, 'N', '022', NULL, NULL, 'Y', 'N', DATE '2026-01-01',
+        '90000000-0000-0000-0000-000000000001', NULL, NULL, 'Y'
+    )
+    INTO hcfa_electronic_fields VALUES (
+        '022', '32000000-0000-0000-0000-000000000001',
+        'HI022', 'D23002310HI286', 'GET_VAL_CODE',
+        'X(2)', 'A', 22, 23, 'Synthetic Value Code slot 2', 'N', 'Y',
+        3, 1, 'N', '025', NULL, NULL, 'Y', 'N', DATE '2026-01-01',
+        '90000000-0000-0000-0000-000000000001', NULL, NULL, 'Y'
+    )
+    INTO hcfa_electronic_fields VALUES (
+        '025', '32000000-0000-0000-0000-000000000001',
+        'HI025', 'D23002310HI286', 'GET_VAL_CODE_AMT',
+        'X(12)', 'A', 25, 36, 'Synthetic Value amount slot 2', 'N', 'Y',
+        4, 1, 'N', '030', NULL, NULL, 'Y', 'N', DATE '2026-01-01',
+        '90000000-0000-0000-0000-000000000001', NULL, NULL, 'Y'
+    )
+    INTO hcfa_electronic_fields VALUES (
+        '030', '32000000-0000-0000-0000-000000000001',
+        'SYN_UNMANAGED_HI', 'D23002310HI286', 'SYN_KEEP_UNMANAGED',
+        'X(4)', 'A', 30, 33, 'Synthetic unmanaged Value Codes HEF', 'N', 'Y',
+        5, 1, 'N', NULL, 'KEEP_UNMANAGED', NULL, 'Y', 'N',
+        DATE '2026-01-01', '90000000-0000-0000-0000-000000000001',
+        NULL, NULL, 'Y'
+    )
+SELECT 1 FROM dual;
+
 COMMIT;

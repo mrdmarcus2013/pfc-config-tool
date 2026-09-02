@@ -1,5 +1,12 @@
 # PFC Configuration Tool Project Rules
 
+## MatrixCare Production Boundary
+
+Before creating or modifying anything under `database/production_tests/`, read
+`docs/PRODUCTION_DATABASE_BOUNDARY.md`. Production scripts must be standalone
+and must never depend on repository-installed PFC tool objects. Never install
+tool-owned objects into MatrixCare production to make a validation script pass.
+
 - Never use or commit real patient, payor, claim, or production data.
 - All test data must be synthetic.
 - Never commit credentials or `.env`.

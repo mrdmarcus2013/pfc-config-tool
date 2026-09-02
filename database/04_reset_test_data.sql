@@ -38,8 +38,13 @@ WHERE billing_form_code = 'UB04'
 DELETE FROM pfc
 WHERE rec_ent_user = '90000000-0000-0000-0000-000000000001';
 
-DELETE FROM pfc_config_payor_context
-WHERE rec_ent_user = '90000000-0000-0000-0000-000000000001';
+DELETE FROM pfc_config_payor_context c
+WHERE EXISTS (
+    SELECT 1
+    FROM payors p
+    WHERE p.payor_guid = c.payor_guid
+      AND p.rec_ent_user = '90000000-0000-0000-0000-000000000001'
+);
 
 DELETE FROM payors
 WHERE rec_ent_user = '90000000-0000-0000-0000-000000000001';
