@@ -42,6 +42,11 @@ export const CONFIGURATION_CAPABILITIES = {
     fieldNumber: "81",
     optionCodes: ["PROVIDER_TAXONOMY_ON", "PROVIDER_TAXONOMY_OFF"],
   },
+  "value-codes": {
+    capabilityKey: "value-codes",
+    fieldNumber: "39-41",
+    optionCodes: [],
+  },
 } as const satisfies Readonly<
   Record<ClaimFieldCapabilityKey, ConfigurationCapabilityDefinition>
 >;
@@ -51,6 +56,7 @@ export const CONFIGURATION_CAPABILITIES = {
  * this field number. Catalog rows remain visible when the capability is absent.
  */
 export const CAPABILITY_KEY_BY_API_FIELD_NUMBER = {
+  "39-41": "value-codes",
   "77": "service-facility",
   "81": "provider-taxonomy",
 } as const satisfies Readonly<Record<string, ClaimFieldCapabilityKey>>;

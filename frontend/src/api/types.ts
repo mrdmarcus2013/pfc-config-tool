@@ -90,3 +90,38 @@ export interface LineOfBusinessChangeResponse {
   summary: string;
   debug_targets: ManagedTargetCount[];
 }
+
+export interface ValueCodeSelections {
+  cbsa: boolean;
+  fips: boolean;
+  care_location_value_code: boolean;
+  patient_entered_value_code: boolean;
+  covered_days_value_code: boolean;
+}
+export interface ValueCodesCurrentRequest { payor_guid: string; plan_guid: string | null }
+export interface ValueCodesChangeRequest extends ValueCodesCurrentRequest {
+  selections: ValueCodeSelections;
+  audit_user: string;
+}
+export interface ValueCodesApplyRequest extends ValueCodesChangeRequest { expected_state_hash: string }
+export interface ValueCodesCurrentResponse {
+  configuration_status: "RESOLVED";
+  line_of_business: LineOfBusiness;
+  is_default: boolean;
+  selections: ValueCodeSelections;
+  canonical_status: string;
+  display_summary: string;
+  pfc_guid: string;
+  debug: Record<string, unknown>;
+}
+export interface ValueCodesChangeResponse {
+  status: "PREVIEW" | "APPLIED" | "NO_CHANGE";
+  is_default: boolean;
+  selections: ValueCodeSelections;
+  display_summary: string;
+  state_hash: string;
+  change_count: number;
+  summary: string;
+  pfc_guid: string | null;
+  debug_changes: TechnicalChange[];
+}

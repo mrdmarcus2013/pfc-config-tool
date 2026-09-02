@@ -1,6 +1,7 @@
 export type ClaimFieldCapabilityKey =
   | "provider-taxonomy"
-  | "service-facility";
+  | "service-facility"
+  | "value-codes";
 
 /** Static, implementation-neutral metadata for one visible claim-form row. */
 export interface ClaimFieldCatalogEntry {

@@ -13,6 +13,11 @@ import type {
   LineOfBusinessSaveResponse,
   OptionsResponse,
   PreviewRequest,
+  ValueCodesApplyRequest,
+  ValueCodesChangeRequest,
+  ValueCodesChangeResponse,
+  ValueCodesCurrentRequest,
+  ValueCodesCurrentResponse,
 } from "./types";
 
 export class ApiClientError extends Error {
@@ -70,4 +75,10 @@ export const apiClient = {
     request<LineOfBusinessChangeResponse>("/api/config/line-of-business/preview-change", post(body)),
   lineOfBusinessApplyChange: (body: LineOfBusinessApplyRequest) =>
     request<LineOfBusinessChangeResponse>("/api/config/line-of-business/apply-change", post(body)),
+  valueCodesCurrent: (body: ValueCodesCurrentRequest) =>
+    request<ValueCodesCurrentResponse>("/api/config/value-codes/current", post(body)),
+  valueCodesPreview: (body: ValueCodesChangeRequest) =>
+    request<ValueCodesChangeResponse>("/api/config/value-codes/preview", post(body)),
+  valueCodesApply: (body: ValueCodesApplyRequest) =>
+    request<ValueCodesChangeResponse>("/api/config/value-codes/apply", post(body)),
 };

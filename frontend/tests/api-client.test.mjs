@@ -87,6 +87,28 @@ test("Line of Business uses payor-level current/save and exact preview hash appl
   assert.equal("pfc_guid" in calls[3].body, false);
 });
 
+test("Value Codes uses separate structured endpoints and forwards the preview hash", async () => {
+  const calls = [];
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, body: JSON.parse(init.body) });
+    return jsonResponse({ status: "PREVIEW" });
+  };
+  const selections = { cbsa: true, fips: false,
+    care_location_value_code: false, patient_entered_value_code: false,
+    covered_days_value_code: false };
+  const base = { payor_guid: "payor", plan_guid: null, selections, audit_user: "audit" };
+  await apiClient.valueCodesCurrent({ payor_guid: "payor", plan_guid: null });
+  await apiClient.valueCodesPreview(base);
+  await apiClient.valueCodesApply({ ...base, expected_state_hash: "E".repeat(64) });
+  assert.deepEqual(calls.map((call) => call.path), [
+    "/api/config/value-codes/current", "/api/config/value-codes/preview",
+    "/api/config/value-codes/apply",
+  ]);
+  assert.deepEqual(calls[1].body.selections, selections);
+  assert.equal(calls[2].body.expected_state_hash, "E".repeat(64));
+  assert.equal("option_code" in calls[2].body, false);
+});
+
 test("metadata failure and backend unavailability are safe", async () => {
   globalThis.fetch = async () => jsonResponse({ error: { category: "stale_preview", message: "ORA-20504 raw text" } }, 409);
   await assert.rejects(apiClient.options(), (error) => error instanceof ApiClientError && error.category === "stale_preview");

@@ -72,7 +72,9 @@ export const actionLabel = (operationCode: string): string => {
   return labels[operationCode] ?? "Configuration component will be reviewed";
 };
 
-export const previewAllowsApply = (preview: ConfigurationResponse | null): boolean =>
+type ApplicablePreview = Pick<ConfigurationResponse, "status" | "change_count" | "debug_changes">;
+
+export const previewAllowsApply = (preview: ApplicablePreview | null): boolean =>
   Boolean(
     preview &&
       preview.status === "PREVIEW" &&
@@ -98,7 +100,7 @@ export const editorActionState = ({
   applyCompleted,
 }: {
   dirty: boolean;
-  preview: ConfigurationResponse | null;
+  preview: ApplicablePreview | null;
   busy: "preview" | "apply" | null;
   applyCompleted: boolean;
 }): EditorActionState => {
@@ -145,6 +147,8 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   verification_failure: "The change could not be verified, so it was rolled back.",
   target_not_found: "A required configuration target was not found. Nothing was changed.",
   invalid_request: "The request was not valid. Review the selection and try again.",
+  invalid_selection: "That Value Codes selection is not valid for the saved Line of Business.",
+  current_state_unsupported: "The current configuration requires support review before it can be changed.",
   database_failure: "The database operation could not be completed safely.",
   application_failure: "The configuration operation failed safely. Nothing was changed.",
   line_of_business_required: "Select and save a Line of Business before configuring claim fields.",
