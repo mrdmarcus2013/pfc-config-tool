@@ -113,6 +113,7 @@ source_candidates AS (
         h.form_template_guid,
         h.user_form_template_guid,
         h.sto_proc_name,
+        h.mandatory_ind,
         CASE
             WHEN h.user_form_template_guid IS NOT NULL THEN 1
             WHEN h.form_template_guid IS NOT NULL THEN 2
@@ -171,7 +172,9 @@ source_resolution AS (
         CASE WHEN COUNT(s.electronic_rec_guid) = 1
             THEN MAX(s.user_form_template_guid) END AS source_user_form_template_guid,
         CASE WHEN COUNT(s.electronic_rec_guid) = 1
-            THEN MAX(s.sto_proc_name) END AS source_her_sto_proc_name
+            THEN MAX(s.sto_proc_name) END AS source_her_sto_proc_name,
+        CASE WHEN COUNT(s.electronic_rec_guid) = 1
+            THEN MAX(s.mandatory_ind) END AS source_her_mandatory_ind
     FROM pfc_resolution p
     LEFT JOIN best_source_candidates s ON 1 = 1
     GROUP BY
@@ -385,6 +388,7 @@ summary AS (
         s.source_form_template_guid,
         s.source_user_form_template_guid,
         s.source_her_sto_proc_name,
+        s.source_her_mandatory_ind,
         (SELECT COUNT(*) FROM source_hefs) AS source_hef_count,
         c.existing_payor_her_count,
         c.existing_payor_hef_count,
@@ -394,8 +398,18 @@ summary AS (
             WHEN s.pfc_status <> 'RESOLVED' THEN 'BLOCKED_PFC_AMBIGUOUS'
             WHEN s.source_status = 'MISSING' THEN 'BLOCKED_SOURCE_MISSING'
             WHEN s.source_status <> 'RESOLVED' THEN 'BLOCKED_SOURCE_AMBIGUOUS'
+            WHEN NVL(UPPER(TRIM(s.source_her_sto_proc_name)), '<NULL>') <>
+                    'RETURN_1'
+             AND NVL(UPPER(TRIM(s.source_her_mandatory_ind)), '<NULL>') <> 'N'
+                THEN 'BLOCKED_SOURCE_INVALID_MANDATORY'
             WHEN c.existing_payor_her_count > 1
                 THEN 'BLOCKED_DUPLICATE_PAYOR_HER'
+            WHEN c.existing_payor_her_count = 1
+             AND EXISTS (SELECT 1 FROM current_her h
+                 WHERE NVL(UPPER(TRIM(h.sto_proc_name)), '<NULL>') <>
+                        'RETURN_1'
+                   AND NVL(UPPER(TRIM(h.mandatory_ind)), '<NULL>') <> 'N')
+                THEN 'UNRECOGNIZED'
             WHEN c.existing_payor_her_count = 0 THEN 'RESOLVED'
             WHEN e.is_equivalent = 1 THEN 'RESOLVED'
             WHEN r.recipe_match_count = 0 THEN 'UNRECOGNIZED'
@@ -424,6 +438,7 @@ diagnostic_rows AS (
         h.form_template_guid AS her_form_template_guid,
         h.user_form_template_guid AS her_user_form_template_guid,
         h.sto_proc_name AS her_sto_proc_name,
+        h.mandatory_ind AS her_mandatory_ind,
         m.field_number, f.field_name, f.record_type_code AS hef_record_type_code,
         f.sto_proc_name, f.hard_coded_data,
         f.pic, f.field_spec, f.position_from, f.position_thru,
@@ -442,6 +457,7 @@ diagnostic_rows AS (
         h.electronic_rec_guid, h.payor_guid, h.payor_type_guid, h.plan_guid,
         h.type_of_bill, h.form_template_guid, h.user_form_template_guid,
         h.sto_proc_name,
+        h.mandatory_ind,
         m.field_number, f.field_name, f.record_type_code,
         f.sto_proc_name, f.hard_coded_data,
         f.pic, f.field_spec, f.position_from, f.position_thru,
@@ -459,6 +475,7 @@ diagnostic_rows AS (
         h.electronic_rec_guid, h.payor_guid, h.payor_type_guid, h.plan_guid,
         h.type_of_bill, h.form_template_guid, h.user_form_template_guid,
         h.sto_proc_name,
+        h.mandatory_ind,
         f.field_number, f.field_name, f.record_type_code,
         f.sto_proc_name, f.hard_coded_data,
         f.pic, f.field_spec, f.position_from, f.position_thru,
@@ -477,6 +494,7 @@ diagnostic_rows AS (
         h.electronic_rec_guid, h.payor_guid, h.payor_type_guid, h.plan_guid,
         h.type_of_bill, h.form_template_guid, h.user_form_template_guid,
         h.sto_proc_name,
+        h.mandatory_ind,
         f.field_number, f.field_name, f.record_type_code,
         f.sto_proc_name, f.hard_coded_data,
         f.pic, f.field_spec, f.position_from, f.position_thru,
@@ -501,6 +519,11 @@ SELECT
     s.source_form_template_guid,
     s.source_user_form_template_guid,
     s.source_her_sto_proc_name,
+    s.source_her_mandatory_ind,
+    CASE WHEN s.source_status <> 'RESOLVED' THEN 'UNAVAILABLE'
+         WHEN NVL(UPPER(TRIM(s.source_her_sto_proc_name)), '<NULL>') = 'RETURN_1'
+              OR NVL(UPPER(TRIM(s.source_her_mandatory_ind)), '<NULL>') = 'N'
+         THEN 'SAFE' ELSE 'INVALID_MANDATORY_COMBINATION' END source_safety_status,
     s.source_hef_count,
     s.existing_payor_her_count,
     s.existing_payor_hef_count,
@@ -514,6 +537,7 @@ SELECT
     CAST(NULL AS VARCHAR2(36)) AS row_her_form_template_guid,
     CAST(NULL AS VARCHAR2(36)) AS row_her_user_template_guid,
     CAST(NULL AS VARCHAR2(30)) AS row_her_sto_proc_name,
+    CAST(NULL AS VARCHAR2(1)) AS row_her_mandatory_ind,
     CAST(NULL AS VARCHAR2(10)) AS field_number,
     CAST(NULL AS VARCHAR2(50)) AS field_name,
     CAST(NULL AS VARCHAR2(20)) AS hef_record_type_code,
@@ -547,12 +571,18 @@ SELECT
     s.payor_type_guid, s.billing_form_code, s.source_status,
     s.source_electronic_rec_guid, s.source_form_template_guid,
     s.source_user_form_template_guid, s.source_her_sto_proc_name,
+    s.source_her_mandatory_ind,
+    CASE WHEN s.source_status <> 'RESOLVED' THEN 'UNAVAILABLE'
+         WHEN NVL(UPPER(TRIM(s.source_her_sto_proc_name)), '<NULL>') = 'RETURN_1'
+              OR NVL(UPPER(TRIM(s.source_her_mandatory_ind)), '<NULL>') = 'N'
+         THEN 'SAFE' ELSE 'INVALID_MANDATORY_COMBINATION' END,
     s.source_hef_count, s.existing_payor_her_count,
     s.existing_payor_hef_count, s.current_effective_status,
     s.current_recognized_recipe,
     d.electronic_rec_guid, d.her_payor_guid, d.her_payor_type_guid,
     d.her_plan_guid, d.her_type_of_bill, d.her_form_template_guid,
     d.her_user_form_template_guid, d.her_sto_proc_name,
+    d.her_mandatory_ind,
     d.field_number, d.field_name, d.hef_record_type_code,
     d.sto_proc_name, d.hard_coded_data,
     d.pic, d.field_spec, d.position_from, d.position_thru,

@@ -16,6 +16,7 @@ IS
     TYPE t_effective_record IS RECORD (
         pfc_guid       pfc.pfc_guid%TYPE,
         her_sto_proc   hcfa_electronic_records.sto_proc_name%TYPE,
+        her_mandatory  hcfa_electronic_records.mandatory_ind%TYPE,
         hef_sto_proc   hcfa_electronic_fields.sto_proc_name%TYPE,
         hef_hard_code  hcfa_electronic_fields.hard_coded_data%TYPE
     );
@@ -168,6 +169,9 @@ IS
 
         IF l_payor_count = 1 THEN
             p_effective.her_sto_proc := l_payor_her_proc;
+            SELECT h.mandatory_ind INTO p_effective.her_mandatory
+            FROM hcfa_electronic_records h
+            WHERE h.electronic_rec_guid = l_payor_guid;
             p_effective.hef_sto_proc := l_payor_hef_proc;
             p_effective.hef_hard_code := l_payor_hard_code;
             IF p_managed_field_name IS NOT NULL AND l_payor_field_count <> 1 THEN
@@ -178,6 +182,9 @@ IS
             END IF;
         ELSE
             p_effective.her_sto_proc := l_source_her_proc;
+            SELECT h.mandatory_ind INTO p_effective.her_mandatory
+            FROM hcfa_electronic_records h
+            WHERE h.electronic_rec_guid = l_source_guid;
             p_effective.hef_sto_proc := l_source_hef_proc;
             p_effective.hef_hard_code := l_source_hard_code;
             IF p_managed_field_name IS NOT NULL AND l_source_field_count <> 1 THEN
@@ -186,6 +193,18 @@ IS
                     'The inherited source has an unsupported managed-field state.'
                 );
             END IF;
+        END IF;
+        IF NOT pfc_config_internal.her_satisfies_safety_invariants(
+            p_effective.her_sto_proc, p_effective.her_mandatory
+        ) THEN
+            RAISE_APPLICATION_ERROR(
+                CASE WHEN l_payor_count = 0
+                    THEN pfc_config_internal.c_err_unsafe_source
+                    ELSE c_err_current_unsupported END,
+                CASE WHEN l_payor_count = 0
+                    THEN 'The inherited claim configuration violates the mandatory-record rule.'
+                    ELSE 'The payor override violates the mandatory-record rule.' END
+            );
         END IF;
     EXCEPTION
         WHEN OTHERS THEN

@@ -12,6 +12,13 @@ capabilities. Oracle is the authoritative configuration engine: the API validate
 request shape, manages transactions, invokes stored procedures, and returns
 user-safe results. It does not reproduce resolver or comparison logic in Python.
 
+Generic claim configuration is governed by
+[`docs/CLAIM_CONFIGURATION_ENGINE_RULES.md`](docs/CLAIM_CONFIGURATION_ENGINE_RULES.md).
+Globally, any desired HER whose stored procedure is not `RETURN_1` must have
+`MANDATORY_IND = 'N'`; `RETURN_1` does not force either mandatory value. Default
+remains exact inheritance and blocks when the inherited source violates this
+safety rule instead of creating a repair override.
+
 ## Local Oracle Development
 
 Docker Desktop is required for the local Oracle database. Copy `.env.example` to
@@ -56,6 +63,9 @@ The initial API surface is:
 - `POST /api/config/value-codes/current`
 - `POST /api/config/value-codes/preview`
 - `POST /api/config/value-codes/apply`
+- `POST /api/config/remarks/current`
+- `POST /api/config/remarks/preview`
+- `POST /api/config/remarks/apply`
 
 Line of Business is stored once per payor as `HOME_HEALTH` or `HOSPICE`.
 Claim-field current, preview, and apply operations are unavailable until the
@@ -90,6 +100,17 @@ is independent, so Hospice has six valid states including Default. No
 selections means Default: inherit the complete source resolved by the normal
 MatrixCare hierarchy and keep no payor override. FIPS without CBSA, cross-LOB
 flags, and conflicting Hospice combinations fail safely.
+
+Remarks (UB-04 field 80) also uses a structured API. `DEFAULT` inherits the
+complete authoritative source and keeps no payor override. `CUSTOM` accepts
+the user's actual remark, clones the complete source configuration, and
+hard-codes the trimmed text in managed field NTE02 while setting the managed
+NTE segment values. Existing recognized custom text is read back from Oracle
+and repopulates the editor exactly. Blank text is forbidden because it can
+cause claim rejection. The current configured maximum is a temporary 100
+characters, centralized as `REMARKS_CUSTOM_REMARK_MAX_LENGTH` in the Oracle,
+backend, and frontend boundary modules pending confirmation of the production
+limit.
 
 `POST /api/config/current` accepts `payor_guid`, nullable `plan_guid`, and
 `field_number` (`77` or `81`). It performs one read-only Oracle resolution and

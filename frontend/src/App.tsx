@@ -10,7 +10,8 @@ import {
   selectionsFromCurrent,
 } from "./app/current-state";
 import {
-  catalogFieldIsAvailable, currentPreview, previewAfterError,
+  catalogFieldIsAvailable, catalogFieldIsEditable, currentPreview,
+  fieldEditorRoute, previewAfterError, selectCatalogFieldForEditor,
   editorActionState, previewAllowsApply, previewIdentity, previewRequest, providerTaxonomyOption,
   safeError, serviceFacilityOption, SingleFlightGate,
 } from "./app/workflow";
@@ -29,6 +30,7 @@ import {
   valueCodeSelectionIdentity, valueCodeSelectionsEqual, valueCodesSummary,
 } from "./app/value-codes";
 import { PreviewResult } from "./app/preview-result";
+import { RemarksEditor } from "./app/remarks-editor";
 import { CLAIM_FIELD_CATALOG } from "./data/claim-field-catalog";
 import type {
   ProviderTaxonomySelection, PublicOptionCode, ServiceFacilityAddress, ServiceFacilityMode,
@@ -41,6 +43,7 @@ const CAPABILITY_DESCRIPTION = {
   "service-facility": "Service Facility reporting settings",
   "provider-taxonomy": "Provider Taxonomy reporting",
   "value-codes": "Value Codes settings",
+  "remarks": "Remarks settings",
 } as const;
 
 type FieldGroupLayout =
@@ -679,8 +682,10 @@ export function App() {
                           {group.label && <h4 className="field-group-title">{group.label}</h4>}
                           <div className="field-grid">
                             {groupFields.map((field) => {
-                              const available = catalogFieldIsAvailable(field, optionFields);
-                              const editable = available && unlocked;
+                              const available = !loading && !metadataError
+                                && catalogFieldIsAvailable(field, optionFields);
+                              const editable = available
+                                && catalogFieldIsEditable(field, optionFields, lob);
                               const canSpan = ["billing", "patient-details", "tail"].includes(group.layout);
                               const wide = canSpan && field.label.length > 35 ? " field-cell--wide" : "";
                               const reserved = /^(unlabeled|untitled)$/i.test(field.label) ? " field-cell--reserved" : "";
@@ -690,7 +695,9 @@ export function App() {
                                   className={`field-cell${wide}${reserved}${available ? " field-cell--configurable" : ""}${available && !unlocked ? " field-cell--locked" : ""}`}
                                   key={field.id}
                                   disabled={!editable}
-                                  onClick={() => editable && setSelectedField(field)}
+                                  onClick={() => setSelectedField(
+                                    selectCatalogFieldForEditor(field, optionFields, lob),
+                                  )}
                                   aria-label={`Field ${field.fieldNumber}, ${field.label}${editable ? ", configurable" : available ? ", requires Line of Business" : ", not configurable yet"}`}
                                 >
                                   <span className="field-cell-heading">
@@ -714,9 +721,11 @@ export function App() {
           </div>
         </section>
       </main>
-      {selectedField && lob && (selectedField.capabilityKey === "value-codes"
+      {selectedField && lob && (fieldEditorRoute(selectedField) === "value-codes"
         ? <ValueCodesEditor field={selectedField} context={UI_DEMO_LAUNCH_CONTEXT} lineOfBusiness={lob} onClose={() => setSelectedField(null)} supportDeveloperMode={SUPPORT_DEVELOPER_MODE} />
-        : <FieldEditor field={selectedField} context={UI_DEMO_LAUNCH_CONTEXT} onClose={() => setSelectedField(null)} supportDeveloperMode={SUPPORT_DEVELOPER_MODE} />)}
+        : fieldEditorRoute(selectedField) === "remarks"
+          ? <RemarksEditor field={selectedField} context={UI_DEMO_LAUNCH_CONTEXT} lineOfBusiness={lob} onClose={() => setSelectedField(null)} supportDeveloperMode={SUPPORT_DEVELOPER_MODE} />
+          : <FieldEditor field={selectedField} context={UI_DEMO_LAUNCH_CONTEXT} onClose={() => setSelectedField(null)} supportDeveloperMode={SUPPORT_DEVELOPER_MODE} />)}
     </div>
   );
 }

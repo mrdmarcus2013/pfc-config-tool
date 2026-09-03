@@ -22,6 +22,11 @@ from backend.app.models import (
     LineOfBusinessSaveResponse,
     OptionsResponse,
     PreviewRequest,
+    RemarksApplyRequest,
+    RemarksChangeRequest,
+    RemarksChangeResponse,
+    RemarksCurrentRequest,
+    RemarksCurrentResponse,
     ValueCodesApplyRequest,
     ValueCodesChangeRequest,
     ValueCodesChangeResponse,
@@ -148,3 +153,27 @@ def apply_value_codes(
     service: ConfigurationService = Depends(get_configuration_service),
 ) -> dict[str, object]:
     return service.value_codes_apply(**request.model_dump())
+
+
+@app.post("/api/config/remarks/current", response_model=RemarksCurrentResponse)
+def current_remarks(
+    request: RemarksCurrentRequest,
+    service: ConfigurationService = Depends(get_configuration_service),
+) -> dict[str, object]:
+    return service.remarks_current(**request.model_dump())
+
+
+@app.post("/api/config/remarks/preview", response_model=RemarksChangeResponse)
+def preview_remarks(
+    request: RemarksChangeRequest,
+    service: ConfigurationService = Depends(get_configuration_service),
+) -> dict[str, object]:
+    return service.remarks_preview(**request.model_dump())
+
+
+@app.post("/api/config/remarks/apply", response_model=RemarksChangeResponse)
+def apply_remarks(
+    request: RemarksApplyRequest,
+    service: ConfigurationService = Depends(get_configuration_service),
+) -> dict[str, object]:
+    return service.remarks_apply(**request.model_dump())

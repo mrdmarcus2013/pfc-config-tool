@@ -28,6 +28,7 @@ _ORACLE_ERROR_MAP: dict[int, tuple[int, str, str]] = {
     20011: (409, "ambiguous_target", "The configuration target is ambiguous and cannot be changed safely."),
     20020: (409, "source_not_found", "No eligible configuration source was found."),
     20021: (409, "ambiguous_source", "The configuration source is ambiguous and cannot be used safely."),
+    20012: (409, "invalid_inherited_configuration", "The inherited claim configuration is invalid and must be corrected before this field can use Default."),
     20030: (400, "invalid_request", "The requested operation mode is invalid."),
     20031: (400, "invalid_request", "A valid audit user is required."),
     20032: (500, "application_failure", "The selected option is not configured correctly."),
@@ -53,6 +54,12 @@ _ORACLE_ERROR_MAP: dict[int, tuple[int, str, str]] = {
     20061: (422, "invalid_selection", "The saved Line of Business is not supported for Value Codes."),
     20062: (422, "invalid_selection", "The Value Codes selections are not valid for the saved Line of Business."),
     20063: (409, "current_state_unsupported", "The Value Codes configuration cannot be processed safely."),
+    20070: (409, "line_of_business_required", "Line of Business must be saved before Remarks can be configured."),
+    20071: (422, "invalid_selection", "The saved Line of Business is not supported for Remarks."),
+    20072: (422, "invalid_request", "Select Default or Custom remark."),
+    20073: (422, "invalid_request", "Custom remark text is required."),
+    20074: (422, "invalid_request", "Custom remark text exceeds the configured maximum length."),
+    20075: (409, "current_state_unsupported", "The Remarks configuration cannot be processed safely."),
 }
 
 

@@ -55,6 +55,7 @@ IS
 BEGIN
     l_option.option_code := p_option_code;
     l_option.phys_form_field_num := '77';
+    l_option.inherit_source_ind := 'N';
 
     l_option.targets(1).target_code := 'NM1';
     l_option.targets(1).billing_form_code := '837I_5010';

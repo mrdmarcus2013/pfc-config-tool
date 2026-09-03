@@ -82,10 +82,22 @@ when the API supplies its complete expected public option set. All other fields
 stay visible and disabled as **Not configurable yet**.
 
 - **77 — Operating Provider** opens Service Facility reporting settings.
+- **80 — Remarks** opens Default/Custom remark settings.
 - **81 — cc** opens Provider Taxonomy reporting.
 
 No Oracle record types, stored procedures, target selectors, or HER/HEF logic
 exist in the catalog or user-facing controls.
+
+Field 80 defaults to the complete inherited source configuration. Selecting
+Custom exposes a text editor for the actual claim remark; the trimmed text is
+sent through Preview/Apply and stored by Oracle as NTE02 hard-coded data.
+Recognized current Custom text is returned and repopulates that editor. Blank
+or whitespace-only remarks are blocked because they can cause claim rejection.
+The displayed maximum is the temporary configured limit exported as
+`REMARKS_CUSTOM_REMARK_MAX_LENGTH` from `src/app/remarks.ts`; it is not a
+confirmed MatrixCare production limit. Future managed NTE fields can extend the
+structured overlay without exposing stored procedures or technical recipes in
+the normal UI.
 
 ## Preview and apply
 

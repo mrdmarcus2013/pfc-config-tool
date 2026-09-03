@@ -64,6 +64,8 @@ CREATE OR REPLACE PACKAGE pfc_option_types AUTHID DEFINER AS
         option_code         t_option_code,
         display_label       t_display_label,
         phys_form_field_num t_phys_form_field_num,
+        /* Y identifies exact source inheritance; all other values are explicit. */
+        inherit_source_ind  VARCHAR2(1),
         targets             t_option_targets
     );
 

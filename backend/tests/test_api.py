@@ -89,6 +89,40 @@ class StubService:
     def value_codes_apply(self, **request):
         return self._value_codes_result("APPLIED", request)
 
+    def remarks_current(self, **request):
+        return {
+            "configuration_status": "RESOLVED",
+            "line_of_business": "HOME_HEALTH",
+            "mode": "DEFAULT",
+            "custom_remark": None,
+            "canonical_status": "INHERITED",
+            "display_summary": "Default",
+            "pfc_guid": "30000000-0000-0000-0000-0000000000A1",
+            "debug": {},
+        }
+
+    def remarks_preview(self, **request):
+        return self._remarks_result("PREVIEW", request)
+
+    def remarks_apply(self, **request):
+        return self._remarks_result("APPLIED", request)
+
+    @staticmethod
+    def _remarks_result(status, request):
+        return {
+            "status": status,
+            "mode": request["mode"],
+            "custom_remark": request["custom_remark"],
+            "display_summary": (
+                "Default" if request["mode"] == "DEFAULT" else "Custom remark"
+            ),
+            "state_hash": HASH,
+            "change_count": 1,
+            "summary": "1 configuration change is ready for review.",
+            "pfc_guid": "30000000-0000-0000-0000-0000000000A1",
+            "debug_changes": [],
+        }
+
     @staticmethod
     def _value_codes_result(status, request):
         selections = request["selections"]
@@ -298,6 +332,71 @@ def test_value_codes_uses_structured_contract_without_recipe_ids(client):
     assert "HOME_HEALTH_CBSA" not in applied.text
 
 
+def test_remarks_uses_structured_contract_and_round_trips_custom_text(client):
+    base = {"payor_guid": BASE_REQUEST["payor_guid"], "plan_guid": None}
+    current = client.post("/api/config/remarks/current", json=base)
+    assert current.status_code == 200
+    assert current.json()["mode"] == "DEFAULT"
+    assert current.json()["custom_remark"] is None
+
+    custom_text = "Call provider before processing"
+    preview = client.post("/api/config/remarks/preview", json={
+        **base,
+        "mode": "CUSTOM",
+        "custom_remark": custom_text,
+        "audit_user": BASE_REQUEST["audit_user"],
+    })
+    assert preview.status_code == 200
+    assert preview.json()["custom_remark"] == custom_text
+    assert "option_code" not in preview.json()
+
+    applied = client.post("/api/config/remarks/apply", json={
+        **base,
+        "mode": "CUSTOM",
+        "custom_remark": custom_text,
+        "audit_user": BASE_REQUEST["audit_user"],
+        "expected_state_hash": HASH,
+    })
+    assert applied.status_code == 200
+    assert applied.json()["custom_remark"] == custom_text
+    assert "__PFC_REMARKS" not in applied.text
+
+
+@pytest.mark.parametrize("custom_remark", [None, "", "   ", "X" * 101])
+def test_custom_remarks_reject_blank_or_over_limit_text(client, custom_remark):
+    response = client.post("/api/config/remarks/preview", json={
+        "payor_guid": BASE_REQUEST["payor_guid"],
+        "plan_guid": None,
+        "mode": "CUSTOM",
+        "custom_remark": custom_remark,
+        "audit_user": BASE_REQUEST["audit_user"],
+    })
+    assert response.status_code == 422
+
+
+def test_remarks_accepts_exact_limit_and_trims_boundary_whitespace(client):
+    response = client.post("/api/config/remarks/preview", json={
+        "payor_guid": BASE_REQUEST["payor_guid"],
+        "plan_guid": None,
+        "mode": "CUSTOM",
+        "custom_remark": f"  {'X' * 100}  ",
+        "audit_user": BASE_REQUEST["audit_user"],
+    })
+    assert response.status_code == 200
+    assert response.json()["custom_remark"] == "X" * 100
+
+
+def test_default_remarks_reject_nonblank_custom_text(client):
+    response = client.post("/api/config/remarks/preview", json={
+        "payor_guid": BASE_REQUEST["payor_guid"],
+        "plan_guid": None,
+        "mode": "DEFAULT",
+        "custom_remark": "Do not silently ignore this",
+        "audit_user": BASE_REQUEST["audit_user"],
+    })
+    assert response.status_code == 422
+
+
 @pytest.mark.parametrize("selections", [
     value_code_selections(fips=True),
     value_code_selections(care_location_value_code=True,
@@ -467,6 +566,7 @@ def test_unknown_oracle_error_does_not_expose_credentials_or_sql():
         (20011, 409, "ambiguous_target"),
         (20020, 409, "source_not_found"),
         (20021, 409, "ambiguous_source"),
+        (20012, 409, "invalid_inherited_configuration"),
         (20041, 409, "current_state_unsupported"),
     ],
 )

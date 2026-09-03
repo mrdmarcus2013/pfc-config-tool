@@ -8,7 +8,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 760px; }
-button, input { font: inherit; }
+button, input, textarea { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: default; }
 h1, h2, h3, h4, p { margin-top: 0; }
@@ -393,6 +393,11 @@ legend { font-size: 1.2rem; font-weight: 650; margin-bottom: .85rem; }
 fieldset:disabled { color: #82909a; }
 fieldset:disabled .choice { background: #f3f5f6; }
 .helper { color: #75828d; font-size: .95rem; margin: -.1rem 0 0; }
+.remarks-input { display: grid; font-size: 1rem; font-weight: 650; gap: .45rem; margin: -1rem 0 1.4rem; }
+.remarks-input textarea { border: 1px solid #9eafb9; border-radius: 2px; color: #23374a; min-height: 120px; padding: .7rem; resize: vertical; }
+.remarks-input textarea:focus { border-color: #2e788c; box-shadow: 0 0 0 2px #d7e9ed; outline: none; }
+.character-counter { color: #637587; font-size: .82rem; font-weight: 500; justify-self: end; }
+.validation-message { color: #7a3e24; font-size: .88rem; font-weight: 500; }
 
 .field-editor .notice { margin: 1.15rem 0; padding: 1rem 1.15rem; }
 .field-editor .notice strong { font-size: 1.12rem; }

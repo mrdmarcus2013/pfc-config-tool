@@ -30,6 +30,9 @@ CREATE OR REPLACE PACKAGE BODY pfc_option_registry AS
         IF pfc_value_codes.is_private_option_code(l_option_code) THEN
             RETURN pfc_value_codes.get_private_option(l_option_code);
         END IF;
+        IF pfc_remarks.is_private_option_code(l_option_code) THEN
+            RETURN pfc_remarks.get_private_option(l_option_code);
+        END IF;
         get_registered_options(l_options);
         l_index := l_options.FIRST;
         WHILE l_index IS NOT NULL LOOP
@@ -88,6 +91,14 @@ CREATE OR REPLACE PACKAGE BODY pfc_option_registry AS
             l_count := l_count + 1;
             p_targets(l_count).billing_form_code := '837I_5010';
             p_targets(l_count).record_type_code := 'D23002310HI286';
+        END IF;
+
+        /* Remarks is managed for LOB resets without becoming a public option. */
+        l_key := '837I_5010|D23001900NTE182';
+        IF NOT l_seen.EXISTS(l_key) THEN
+            l_count := l_count + 1;
+            p_targets(l_count).billing_form_code := '837I_5010';
+            p_targets(l_count).record_type_code := 'D23001900NTE182';
         END IF;
     END get_managed_targets;
 END pfc_option_registry;

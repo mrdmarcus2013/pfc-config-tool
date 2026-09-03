@@ -71,6 +71,29 @@ BEGIN
     assert_text('Home Health inherited summary', l_display, 'Default');
     assert_number('Home Health starts without override', l_her_count, 0);
 
+    SAVEPOINT unsafe_value_codes_source;
+    UPDATE hcfa_electronic_records SET mandatory_ind = 'Y'
+    WHERE electronic_rec_guid = l_source;
+    l_failed := FALSE;
+    BEGIN
+        change_config(c_payor, 'PREVIEW', NULL, 'N', 'N', 'N', 'N', 'N');
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLCODE = pfc_config_internal.c_err_unsafe_source THEN
+            l_failed := TRUE;
+        ELSE RAISE;
+        END IF;
+    END;
+    IF NOT l_failed THEN fail('Unsafe Value Codes Default source was accepted.'); END IF;
+    change_config(c_payor, 'PREVIEW', NULL, 'Y', 'N', 'N', 'N', 'N');
+    l_hash2 := l_hash;
+    change_config(c_payor, 'APPLY', l_hash2, 'Y', 'N', 'N', 'N', 'N');
+    SELECT COUNT(*) INTO l_count
+    FROM hcfa_electronic_records h
+    WHERE h.payor_guid = c_payor AND h.record_type_code = c_target
+      AND h.sto_proc_name = 'RETURN_1' AND h.mandatory_ind = 'Y';
+    assert_number('Value Codes RETURN_1 preserves source mandatory', l_count, 1);
+    ROLLBACK TO unsafe_value_codes_source;
+
     change_config(c_payor, 'PREVIEW', NULL, 'Y', 'N', 'N', 'N', 'N');
     assert_text('CBSA preview', l_status, 'PREVIEW');
     l_hash2 := l_hash;

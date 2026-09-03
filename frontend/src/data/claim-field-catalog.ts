@@ -98,7 +98,7 @@ const entries = [
     ["78", "Other Provider"], ["79", "Other Provider"],
   ]),
   ...section("Other", [
-    ["80", "Remarks"],
+    ["80", "Remarks", "remarks"],
     ["81", "cc", "provider-taxonomy"],
   ]),
 ];

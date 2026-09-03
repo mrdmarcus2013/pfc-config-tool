@@ -189,10 +189,10 @@ def make_value_codes_current_connection():
     return Connection(CurrentProcedureCursor(ResultCursor(columns, [row])))
 
 
-def test_public_capabilities_include_grouped_value_codes_without_recipe_ids():
+def test_public_capabilities_include_structured_fields_without_private_ids():
     fields = ConfigurationService().list_options()["fields"]
 
-    assert [field["field_number"] for field in fields] == ["81", "77", "39-41"]
+    assert [field["field_number"] for field in fields] == ["81", "77", "39-41", "80"]
     assert fields[0]["field_label"] == "Provider Taxonomy"
     assert [option["option_code"] for option in fields[0]["options"]] == [
         "PROVIDER_TAXONOMY_ON",
@@ -205,6 +205,113 @@ def test_public_capabilities_include_grouped_value_codes_without_recipe_ids():
     assert fields[2] == {
         "field_number": "39-41", "field_label": "Value Codes", "options": []
     }
+    assert fields[3] == {
+        "field_number": "80", "field_label": "Remarks", "options": []
+    }
+
+
+def make_remarks_current_connection(mode="DEFAULT", custom_remark=None,
+                                    status="RESOLVED"):
+    columns = ["CONFIGURATION_STATUS", "LINE_OF_BUSINESS", "REMARKS_MODE",
+        "CUSTOM_REMARK", "CANONICAL_STATUS", "DISPLAY_SUMMARY", "PFC_GUID",
+        "BILLING_FORM_CODE", "SOURCE_ELECTRONIC_REC_GUID", "TARGET_ACTION",
+        "EXISTING_PAYOR_HER_COUNT", "EXISTING_PAYOR_HEF_COUNT",
+        "SOURCE_HEF_COUNT", "STATE_HASH"]
+    row = [status, "HOME_HEALTH", mode, custom_remark,
+        "INHERITED" if mode == "DEFAULT" else "CANONICAL_OVERRIDE",
+        "Default" if mode == "DEFAULT" else "Custom remark",
+        "synthetic-pfc", "837I_5010", "synthetic-source", "NO_CHANGE",
+        0 if mode == "DEFAULT" else 1, 0 if mode == "DEFAULT" else 4, 4, HASH]
+    return Connection(CurrentProcedureCursor(ResultCursor(columns, [row])))
+
+
+def test_remarks_current_maps_default_and_exact_custom_text():
+    default_connection = make_remarks_current_connection()
+    default = ConfigurationService(lambda: default_connection).remarks_current(
+        payor_guid=request_kwargs()["payor_guid"], plan_guid=None)
+    assert default["mode"] == "DEFAULT"
+    assert default["custom_remark"] is None
+    assert default_connection.rollbacks == 1
+
+    text = "Contact agency for additional documentation"
+    custom_connection = make_remarks_current_connection("CUSTOM", text)
+    custom = ConfigurationService(lambda: custom_connection).remarks_current(
+        payor_guid=request_kwargs()["payor_guid"], plan_guid=None)
+    assert custom["mode"] == "CUSTOM"
+    assert custom["custom_remark"] == text
+    assert custom["debug"]["source_hef_count"] == 4
+
+
+def test_remarks_current_blocks_unsupported_state():
+    connection = make_remarks_current_connection(status="UNRECOGNIZED")
+    with pytest.raises(ApiError) as caught:
+        ConfigurationService(lambda: connection).remarks_current(
+            payor_guid=request_kwargs()["payor_guid"], plan_guid=None)
+    assert caught.value.category == "current_state_unsupported"
+    assert connection.rollbacks == 1
+
+
+def test_remarks_preview_and_apply_bind_structured_text_and_hash():
+    text = "Authorization required before billing"
+    preview_connection = make_connection(display_label="Custom remark")
+    preview = ConfigurationService(lambda: preview_connection).remarks_preview(
+        payor_guid=request_kwargs()["payor_guid"], plan_guid=None,
+        mode="CUSTOM", custom_remark=text,
+        audit_user=request_kwargs()["audit_user"])
+    assert preview["custom_remark"] == text
+    assert preview_connection._cursor.binds["remarks_mode"] == "CUSTOM"
+    assert preview_connection._cursor.binds["custom_remark"] == text
+    assert "option_code" not in preview_connection._cursor.binds
+    assert preview_connection.rollbacks == 1
+
+    apply_connection = make_connection(status="APPLIED", display_label="Custom remark")
+    applied = ConfigurationService(lambda: apply_connection).remarks_apply(
+        payor_guid=request_kwargs()["payor_guid"], plan_guid=None,
+        mode="CUSTOM", custom_remark=text,
+        audit_user=request_kwargs()["audit_user"], expected_state_hash=HASH)
+    assert applied["status"] == "APPLIED"
+    assert apply_connection._cursor.binds["expected_state_hash"] == HASH
+    assert apply_connection.commits == 1
+
+
+@pytest.mark.parametrize(
+    ("operation", "oracle_code", "category"),
+    [
+        ("current", 20070, "line_of_business_required"),
+        ("preview", 20070, "line_of_business_required"),
+        ("apply", 20036, "stale_preview"),
+    ],
+)
+def test_remarks_failures_are_safe_and_always_roll_back(
+    operation, oracle_code, category,
+):
+    details = SimpleNamespace(
+        code=oracle_code, message="ORA raw Remarks implementation detail"
+    )
+    if operation == "current":
+        base = make_remarks_current_connection()
+        connection = Connection(CurrentProcedureCursor(
+            base._cursor._output.getvalue(), oracledb.DatabaseError(details)
+        ))
+        call = lambda service: service.remarks_current(
+            payor_guid=request_kwargs()["payor_guid"], plan_guid=None
+        )
+    else:
+        connection = make_connection(execute_error=oracledb.DatabaseError(details))
+        call = lambda service: getattr(service, f"remarks_{operation}")(
+            payor_guid=request_kwargs()["payor_guid"],
+            plan_guid=None,
+            mode="CUSTOM",
+            custom_remark="Synthetic remark",
+            audit_user=request_kwargs()["audit_user"],
+            **({"expected_state_hash": HASH} if operation == "apply" else {}),
+        )
+    with pytest.raises(ApiError) as caught:
+        call(ConfigurationService(lambda: connection))
+    assert caught.value.category == category
+    assert "oracle" not in caught.value.message.lower()
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
 
 
 def test_value_codes_current_maps_structured_default_and_rolls_back():

@@ -676,6 +676,10 @@ BEGIN
         '40000000-0000-0000-0000-0000000000E1'
     );
     assert_text('PAYOR_E user template', l_before_user, NULL);
+    SELECT h.mandatory_ind INTO l_text
+    FROM hcfa_electronic_records h
+    WHERE h.electronic_rec_guid = l_target_guid;
+    assert_text('Provider OFF mandatory invariant', l_text, 'N');
     ROLLBACK TO test_payor_e;
     DBMS_OUTPUT.PUT_LINE('PASS: PAYOR_E retained exact source template scope.');
 
@@ -1028,6 +1032,13 @@ BEGIN
 
     /* Conditional + address manages all three targets with conditional HERs. */
     SAVEPOINT test_service_conditional_yes;
+    UPDATE hcfa_electronic_records h
+    SET h.mandatory_ind = 'Y'
+    WHERE h.electronic_rec_guid IN (
+        '31000000-0000-0000-0000-000000000001',
+        '31000000-0000-0000-0000-000000000002',
+        '31000000-0000-0000-0000-000000000003'
+    );
     call_option(
         '10000000-0000-0000-0000-0000000000A1',
         'SERVICE_FACILITY_CONDITIONAL_ADDRESS_YES',
@@ -1051,7 +1062,8 @@ BEGIN
       AND h.record_type_code IN (
         'D2310E2500NM1343', 'D2310E2650N3346', 'D2310E2700N4347'
       )
-      AND h.sto_proc_name = 'G_D2310E2500NM1343_COUNT';
+      AND h.sto_proc_name = 'G_D2310E2500NM1343_COUNT'
+      AND h.mandatory_ind = 'N';
     assert_number('conditional/yes HER values', l_number, 3);
     ROLLBACK TO test_service_conditional_yes;
     DBMS_OUTPUT.PUT_LINE('PASS: Conditional/address-yes applied all conditional targets.');

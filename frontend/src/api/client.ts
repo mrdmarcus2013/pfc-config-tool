@@ -13,6 +13,11 @@ import type {
   LineOfBusinessSaveResponse,
   OptionsResponse,
   PreviewRequest,
+  RemarksApplyRequest,
+  RemarksChangeRequest,
+  RemarksChangeResponse,
+  RemarksCurrentRequest,
+  RemarksCurrentResponse,
   ValueCodesApplyRequest,
   ValueCodesChangeRequest,
   ValueCodesChangeResponse,
@@ -81,4 +86,10 @@ export const apiClient = {
     request<ValueCodesChangeResponse>("/api/config/value-codes/preview", post(body)),
   valueCodesApply: (body: ValueCodesApplyRequest) =>
     request<ValueCodesChangeResponse>("/api/config/value-codes/apply", post(body)),
+  remarksCurrent: (body: RemarksCurrentRequest) =>
+    request<RemarksCurrentResponse>("/api/config/remarks/current", post(body)),
+  remarksPreview: (body: RemarksChangeRequest) =>
+    request<RemarksChangeResponse>("/api/config/remarks/preview", post(body)),
+  remarksApply: (body: RemarksApplyRequest) =>
+    request<RemarksChangeResponse>("/api/config/remarks/apply", post(body)),
 };

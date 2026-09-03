@@ -5,6 +5,13 @@ Production-facing validation is governed by
 Local tool packages are never prerequisites for standalone MatrixCare
 production harnesses.
 
+Generic desired-state behavior is governed by
+[`docs/CLAIM_CONFIGURATION_ENGINE_RULES.md`](../docs/CLAIM_CONFIGURATION_ENGINE_RULES.md).
+The engine normalizes every explicit non-`RETURN_1` desired HER to
+`MANDATORY_IND = 'N'`. It preserves `RETURN_1` mandatory values. Default remains
+exact inheritance and blocks an unsafe source rather than creating a repair
+override.
+
 This database is deliberately synthetic and exists only to prove PFC, HER, and
 HEF resolution and future mutation behavior. It does not reproduce unknown
 production DDL, constraints, triggers, or indexes. No production data is used,
@@ -161,6 +168,25 @@ recalculates the same hash before its mandatory-token rollback-only Apply.
 Neither script depends on repository-installed tool objects. Script 09 must run
 only in a fresh, dedicated Toad session containing no unrelated uncommitted
 work.
+
+Remarks targets `D23001900NTE182` for UB-04 field 80. `PFC_REMARKS` is a thin
+structured adapter over the generic engine: Default supplies no overlays and
+therefore means the complete resolved source, while Custom supplies dynamic
+request text and overlays only NTE00, NTE01, and NTE02. The complete source HEF
+set is retained, including untouched unmanaged paired values. Recognized
+Custom state reads the exact NTE02 `HARD_CODED_DATA` back to the caller.
+Blank Custom text is rejected at the authoritative Oracle boundary. The
+temporary configured maximum is `PFC_REMARKS.C_CUSTOM_REMARK_MAX_LENGTH` (100),
+not a confirmed MatrixCare limit; update the corresponding named backend and
+frontend boundary constants if that configured limit changes.
+
+The shared managed-target registry includes Remarks, so a Line of Business
+change resets its payor overrides atomically with the other managed targets.
+Future fields such as NTE03 can be added as another structured overlay without
+changing the generic cloning, comparison, hashing, cleanup, or transaction
+engine. Production files 10 through 12 provide standalone current inspection,
+read-only Preview, and mandatory-rollback Apply validation respectively. LOB is
+manual tool-only context, and none depends on tool-owned Oracle objects.
 
 Accepted validation gap: Service Facility `REBUILD_OVERRIDE` passed in
 production before the final generic paired HEF rule. The final paired-rule

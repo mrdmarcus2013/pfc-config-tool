@@ -14,6 +14,7 @@ DECLARE
     l_n3_count         PLS_INTEGER := 0;
     l_n4_count         PLS_INTEGER := 0;
     l_value_codes_count PLS_INTEGER := 0;
+    l_remarks_count PLS_INTEGER := 0;
 
     PROCEDURE assert_text (
         p_label    IN VARCHAR2,
@@ -289,6 +290,8 @@ BEGIN
     END IF;
 
     l_option := pfc_option_registry.get_option('PROVIDER_TAXONOMY_ON');
+    assert_text('Provider option is explicit',
+        l_option.inherit_source_ind, 'N');
     IF l_option.targets.COUNT <> 1 THEN
         RAISE_APPLICATION_ERROR(-20963, 'Provider Taxonomy must have 1 target.');
     END IF;
@@ -363,7 +366,7 @@ BEGIN
     );
 
     pfc_option_registry.get_managed_targets(l_managed_targets);
-    IF l_managed_targets.COUNT <> 5 THEN
+    IF l_managed_targets.COUNT <> 6 THEN
         RAISE_APPLICATION_ERROR(-20965,
             'Managed targets were not deduplicated across option definitions.');
     END IF;
@@ -377,12 +380,15 @@ BEGIN
             WHEN 'D2310E2700N4347' THEN l_n4_count := l_n4_count + 1;
             WHEN 'D23002310HI286' THEN
                 l_value_codes_count := l_value_codes_count + 1;
+            WHEN 'D23001900NTE182' THEN
+                l_remarks_count := l_remarks_count + 1;
             ELSE RAISE_APPLICATION_ERROR(-20966,
                 'Unexpected managed target was registered.');
         END CASE;
     END LOOP;
     IF l_provider_count <> 1 OR l_nm1_count <> 1 OR
-       l_n3_count <> 1 OR l_n4_count <> 1 OR l_value_codes_count <> 1 THEN
+       l_n3_count <> 1 OR l_n4_count <> 1 OR l_value_codes_count <> 1 OR
+       l_remarks_count <> 1 THEN
         RAISE_APPLICATION_ERROR(-20967,
             'The authoritative managed target set is incomplete.');
     END IF;

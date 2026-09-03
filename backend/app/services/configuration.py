@@ -71,6 +71,11 @@ OPTION_FIELDS = [
         "field_label": "Value Codes",
         "options": [],
     },
+    {
+        "field_number": "80",
+        "field_label": "Remarks",
+        "options": [],
+    },
 ]
 
 _OPTION_FIELD_NUMBERS = {
@@ -180,6 +185,32 @@ BEGIN
             :payor_guid, :plan_guid, :cbsa, :fips,
             :care_location_value_code, :patient_entered_value_code,
             :covered_days_value_code, :audit_user, :expected_state_hash,
+            :summary_cursor, :changes_cursor
+        );
+    END IF;
+END;
+"""
+
+_REMARKS_CURRENT_BLOCK = """
+BEGIN
+    pfc_remarks_api.current_configuration(
+        p_payor_guid => :payor_guid, p_plan_guid => :plan_guid,
+        p_result => :result_cursor
+    );
+END;
+"""
+
+_REMARKS_CHANGE_BLOCK = """
+BEGIN
+    IF :operation_mode = 'PREVIEW' THEN
+        pfc_remarks_api.preview_configuration(
+            :payor_guid, :plan_guid, :remarks_mode, :custom_remark,
+            :audit_user, :summary_cursor, :changes_cursor
+        );
+    ELSE
+        pfc_remarks_api.apply_configuration(
+            :payor_guid, :plan_guid, :remarks_mode, :custom_remark,
+            :audit_user, :expected_state_hash,
             :summary_cursor, :changes_cursor
         );
     END IF;
@@ -434,6 +465,234 @@ class ConfigurationService:
             if summary_cursor is not None: _close_safely(summary_cursor, "Value Codes summary cursor")
             if cursor is not None: _close_safely(cursor, "Value Codes procedure cursor")
             if connection is not None: _close_safely(connection, "Value Codes connection")
+
+    def remarks_current(
+        self, *, payor_guid: str, plan_guid: str | None
+    ) -> dict[str, Any]:
+        connection = cursor = result_cursor = None
+        try:
+            connection = self._connection_factory()
+            cursor = connection.cursor()
+            result_out = cursor.var(oracledb.DB_TYPE_CURSOR)
+            cursor.execute(
+                _REMARKS_CURRENT_BLOCK,
+                payor_guid=payor_guid,
+                plan_guid=plan_guid,
+                result_cursor=result_out,
+            )
+            result_cursor = result_out.getvalue()
+            rows = _rows_as_dicts(result_cursor)
+            if len(rows) != 1 or rows[0].get("configuration_status") != "RESOLVED":
+                raise ApiError(
+                    409,
+                    "current_state_unsupported",
+                    "The current Remarks configuration requires support review.",
+                )
+            row = rows[0]
+            lob = row.get("line_of_business")
+            mode = row.get("remarks_mode")
+            custom_remark = row.get("custom_remark")
+            if lob not in {"HOME_HEALTH", "HOSPICE"} or mode not in {
+                "DEFAULT",
+                "CUSTOM",
+            }:
+                raise ApiError(
+                    500,
+                    "application_failure",
+                    "The database returned an invalid Remarks result.",
+                )
+            if (mode == "DEFAULT" and custom_remark is not None) or (
+                mode == "CUSTOM" and not isinstance(custom_remark, str)
+            ):
+                raise ApiError(
+                    500,
+                    "application_failure",
+                    "The database returned an invalid Remarks result.",
+                )
+            response = {
+                "configuration_status": "RESOLVED",
+                "line_of_business": lob,
+                "mode": mode,
+                "custom_remark": custom_remark,
+                "canonical_status": str(row["canonical_status"]),
+                "display_summary": str(row["display_summary"]),
+                "pfc_guid": str(row["pfc_guid"]),
+                "debug": {
+                    "billing_form_code": row.get("billing_form_code"),
+                    "source_electronic_rec_guid": row.get(
+                        "source_electronic_rec_guid"
+                    ),
+                    "target_action": row.get("target_action"),
+                    "source_hef_count": int(row.get("source_hef_count", 0)),
+                    "existing_payor_her_count": int(
+                        row.get("existing_payor_her_count", 0)
+                    ),
+                    "existing_payor_hef_count": int(
+                        row.get("existing_payor_hef_count", 0)
+                    ),
+                    "state_hash": row.get("state_hash"),
+                },
+            }
+            connection.rollback()
+            return response
+        except ApiError:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise
+        except oracledb.DatabaseError as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise translate_oracle_error(exc, "current Remarks") from None
+        except DatabaseConfigurationError as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise ApiError(
+                503, "database_failure", "The database connection is not configured."
+            ) from exc
+        except Exception as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            logger.error("Unexpected Remarks current failure (%s)", type(exc).__name__)
+            raise ApiError(
+                500,
+                "application_failure",
+                "Remarks could not be resolved safely.",
+            ) from None
+        finally:
+            if result_cursor is not None:
+                _close_safely(result_cursor, "Remarks result cursor")
+            if cursor is not None:
+                _close_safely(cursor, "Remarks procedure cursor")
+            if connection is not None:
+                _close_safely(connection, "Remarks connection")
+
+    def remarks_preview(self, **kwargs: Any) -> dict[str, Any]:
+        return self._run_remarks(
+            operation_mode="PREVIEW", expected_state_hash=None, **kwargs
+        )
+
+    def remarks_apply(
+        self, *, expected_state_hash: str, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._run_remarks(
+            operation_mode="APPLY",
+            expected_state_hash=expected_state_hash,
+            **kwargs,
+        )
+
+    def _run_remarks(
+        self,
+        *,
+        payor_guid: str,
+        plan_guid: str | None,
+        mode: str,
+        custom_remark: str | None,
+        audit_user: str,
+        operation_mode: str,
+        expected_state_hash: str | None,
+    ) -> dict[str, Any]:
+        connection = cursor = summary_cursor = changes_cursor = None
+        try:
+            connection = self._connection_factory()
+            cursor = connection.cursor()
+            summary_out = cursor.var(oracledb.DB_TYPE_CURSOR)
+            changes_out = cursor.var(oracledb.DB_TYPE_CURSOR)
+            cursor.execute(
+                _REMARKS_CHANGE_BLOCK,
+                payor_guid=payor_guid,
+                plan_guid=plan_guid,
+                remarks_mode=mode,
+                custom_remark=custom_remark,
+                audit_user=audit_user,
+                operation_mode=operation_mode,
+                expected_state_hash=expected_state_hash,
+                summary_cursor=summary_out,
+                changes_cursor=changes_out,
+            )
+            summary_cursor = summary_out.getvalue()
+            changes_cursor = changes_out.getvalue()
+            summaries = _rows_as_dicts(summary_cursor)
+            changes = _rows_as_dicts(changes_cursor)
+            if len(summaries) != 1:
+                raise ApiError(
+                    500,
+                    "application_failure",
+                    "The database returned an invalid Remarks result.",
+                )
+            row = summaries[0]
+            status = str(row.get("status"))
+            allowed = (
+                {"PREVIEW", "NO_CHANGE"}
+                if operation_mode == "PREVIEW"
+                else {"APPLIED", "NO_CHANGE"}
+            )
+            if status not in allowed:
+                raise ApiError(
+                    500,
+                    "application_failure",
+                    "The database returned an invalid Remarks status.",
+                )
+            change_count = int(row["change_count"])
+            response = {
+                "status": status,
+                "mode": mode,
+                "custom_remark": custom_remark if mode == "CUSTOM" else None,
+                "display_summary": "Default" if mode == "DEFAULT" else "Custom remark",
+                "state_hash": str(row["state_hash"]),
+                "change_count": change_count,
+                "summary": _safe_summary(status, change_count),
+                "pfc_guid": row.get("pfc_guid"),
+                "debug_changes": [
+                    {
+                        "operation_order": int(change["operation_order"]),
+                        "operation_code": str(change["operation_code"]),
+                        "target_identifier": change.get(
+                            "target_electronic_rec_guid"
+                        ),
+                        "field_number": change.get("field_number"),
+                    }
+                    for change in changes
+                ],
+            }
+            if operation_mode == "APPLY":
+                connection.commit()
+            else:
+                connection.rollback()
+            return response
+        except ApiError:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise
+        except oracledb.DatabaseError as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise translate_oracle_error(
+                exc, operation_mode.lower() + " Remarks"
+            ) from None
+        except DatabaseConfigurationError as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise ApiError(
+                503, "database_failure", "The database connection is not configured."
+            ) from exc
+        except Exception as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            logger.error("Unexpected Remarks adapter failure (%s)", type(exc).__name__)
+            raise ApiError(
+                500,
+                "application_failure",
+                "The Remarks operation failed safely.",
+            ) from None
+        finally:
+            if changes_cursor is not None:
+                _close_safely(changes_cursor, "Remarks changes cursor")
+            if summary_cursor is not None:
+                _close_safely(summary_cursor, "Remarks summary cursor")
+            if cursor is not None:
+                _close_safely(cursor, "Remarks procedure cursor")
+            if connection is not None:
+                _close_safely(connection, "Remarks connection")
 
     def _run_lob_single(
         self,

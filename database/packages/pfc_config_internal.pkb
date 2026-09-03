@@ -1,4 +1,43 @@
 CREATE OR REPLACE PACKAGE BODY pfc_config_internal AS
+    FUNCTION her_satisfies_safety_invariants (
+        p_sto_proc_name IN hcfa_electronic_records.sto_proc_name%TYPE,
+        p_mandatory_ind IN hcfa_electronic_records.mandatory_ind%TYPE
+    ) RETURN BOOLEAN
+    IS
+    BEGIN
+        RETURN CASE
+            WHEN UPPER(TRIM(p_sto_proc_name)) = 'RETURN_1' THEN TRUE
+            WHEN UPPER(TRIM(p_mandatory_ind)) = 'N' THEN TRUE
+            ELSE FALSE
+        END;
+    END her_satisfies_safety_invariants;
+
+    PROCEDURE apply_her_safety_invariants (
+        p_her IN OUT NOCOPY hcfa_electronic_records%ROWTYPE
+    )
+    IS
+    BEGIN
+        IF UPPER(TRIM(p_her.sto_proc_name)) <> 'RETURN_1'
+           OR p_her.sto_proc_name IS NULL THEN
+            p_her.mandatory_ind := 'N';
+        END IF;
+    END apply_her_safety_invariants;
+
+    PROCEDURE assert_inherited_her_safe (
+        p_her IN hcfa_electronic_records%ROWTYPE
+    )
+    IS
+    BEGIN
+        IF NOT her_satisfies_safety_invariants(
+            p_her.sto_proc_name, p_her.mandatory_ind
+        ) THEN
+            RAISE_APPLICATION_ERROR(
+                c_err_unsafe_source,
+                'The inherited claim configuration violates the mandatory-record rule; correct the template or billing-form source.'
+            );
+        END IF;
+    END assert_inherited_her_safe;
+
     PROCEDURE resolve_pfc (
         p_payor_guid IN pfc.payor_guid%TYPE,
         p_plan_guid  IN pfc.plan_guid%TYPE,

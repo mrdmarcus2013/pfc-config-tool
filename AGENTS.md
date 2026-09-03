@@ -1,5 +1,13 @@
 # PFC Configuration Tool Project Rules
 
+## Claim Configuration Engine Rules
+
+Before modifying generic Oracle configuration logic, option definitions,
+current/preview/apply behavior, or production claim-configuration harnesses,
+read `docs/CLAIM_CONFIGURATION_ENGINE_RULES.md`. It is the authoritative generic
+business-rule document. `docs/PRODUCTION_DATABASE_BOUNDARY.md` remains the
+authoritative production-environment boundary.
+
 ## MatrixCare Production Boundary
 
 Before creating or modifying anything under `database/production_tests/`, read

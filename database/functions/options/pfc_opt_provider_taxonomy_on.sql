@@ -7,6 +7,7 @@ BEGIN
     l_option.option_code := 'PROVIDER_TAXONOMY_ON';
     l_option.display_label := 'Provider Taxonomy ON';
     l_option.phys_form_field_num := '81';
+    l_option.inherit_source_ind := 'N';
 
     l_option.targets(1).target_code := 'PRV';
     l_option.targets(1).billing_form_code := '837I_5010';

@@ -42,7 +42,7 @@ INSERT INTO hcfa_electronic_records (
     rec_ent_date, rec_ent_user, include_record_data_onclaim
 ) VALUES (
     '30000000-0000-0000-0000-000000000001', 'PRV', 'Y', 'UB04',
-    'Synthetic Generic Provider', 'B2000A0030PRV080', 80, 'Y',
+    'Synthetic Generic Provider', 'B2000A0030PRV080', 80, 'N',
     'Y', NULL, NULL, NULL,
     NULL, 'N', '1', 'N',
     NULL, 'N', 0,
@@ -233,7 +233,7 @@ INSERT ALL
         rec_ent_date, rec_ent_user, include_record_data_onclaim
     ) VALUES (
         '31000000-0000-0000-0000-000000000001', '2310E', 'Y', 'UB04',
-        'Synthetic Service Facility NM1', 'D2310E2500NM1343', 80, 'Y',
+        'Synthetic Service Facility NM1', 'D2310E2500NM1343', 80, 'N',
         'Y', NULL, NULL, NULL, NULL, 'N', '1', 'N', NULL, 'N', 0,
         'RETURN_0', NULL, 'Synthetic billing-form NM1 source',
         DATE '2026-01-01', '90000000-0000-0000-0000-000000000001', 'N'
@@ -248,7 +248,7 @@ INSERT ALL
         rec_ent_date, rec_ent_user, include_record_data_onclaim
     ) VALUES (
         '31000000-0000-0000-0000-000000000002', '2310E', 'Y', 'UB04',
-        'Synthetic Service Facility N3', 'D2310E2650N3346', 80, 'Y',
+        'Synthetic Service Facility N3', 'D2310E2650N3346', 80, 'N',
         'Y', NULL, NULL, NULL, NULL, 'N', '1', 'N', NULL, 'N', 0,
         'RETURN_0', NULL, 'Synthetic billing-form N3 source',
         DATE '2026-01-01', '90000000-0000-0000-0000-000000000001', 'N'
@@ -263,7 +263,7 @@ INSERT ALL
         rec_ent_date, rec_ent_user, include_record_data_onclaim
     ) VALUES (
         '31000000-0000-0000-0000-000000000003', '2310E', 'Y', 'UB04',
-        'Synthetic Service Facility N4', 'D2310E2700N4347', 80, 'Y',
+        'Synthetic Service Facility N4', 'D2310E2700N4347', 80, 'N',
         'Y', NULL, NULL, NULL, NULL, 'N', '1', 'N', NULL, 'N', 0,
         'RETURN_0', NULL, 'Synthetic billing-form N4 source',
         DATE '2026-01-01', '90000000-0000-0000-0000-000000000001', 'N'
@@ -518,6 +518,57 @@ INSERT ALL
         5, 1, 'N', NULL, 'KEEP_UNMANAGED', NULL, 'Y', 'N',
         DATE '2026-01-01', '90000000-0000-0000-0000-000000000001',
         NULL, NULL, 'Y'
+    )
+SELECT 1 FROM dual;
+
+/*
+ * Explicit synthetic Remarks source. NTE03 is intentionally unmanaged and
+ * contains both value mechanisms so managed-only overlay behavior is tested.
+ */
+INSERT INTO hcfa_electronic_records (
+    electronic_rec_guid, loop_id, contiguity_ind, billing_form_code,
+    record_name, record_type_code, record_size, mandatory_ind,
+    req_for_claim_ind, payor_type_guid, payor_guid, plan_guid,
+    type_of_bill, detail_ind, max_number, invoice_ind,
+    form_template_guid, carry_forward_ind, max_carry_forward,
+    sto_proc_name, user_form_template_guid, notes,
+    rec_ent_date, rec_ent_user, include_record_data_onclaim
+) VALUES (
+    '33000000-0000-0000-0000-000000000001', '2300', 'Y', '837I_5010',
+    'Synthetic Remarks', 'D23001900NTE182', 120, 'N',
+    'N', NULL, NULL, NULL, NULL, 'N', '2', 'N', NULL, 'N', 0,
+    'G_D2300190NTE208_COUNT', NULL, 'Synthetic Remarks default source',
+    DATE '2026-01-01', '90000000-0000-0000-0000-000000000001', 'Y'
+);
+
+INSERT ALL
+    INTO hcfa_electronic_fields VALUES (
+        '00', '33000000-0000-0000-0000-000000000001',
+        'NTE00', 'D23001900NTE182', NULL,
+        'X(3)', 'A', 1, 3, 'Synthetic segment identifier', 'N', 'Y',
+        1, 1, 'N', '01', 'NTE', NULL, 'Y', 'N', DATE '2026-01-01',
+        '90000000-0000-0000-0000-000000000001', NULL, NULL, 'Y'
+    )
+    INTO hcfa_electronic_fields VALUES (
+        '01', '33000000-0000-0000-0000-000000000001',
+        'NTE01', 'D23001900NTE182', NULL,
+        'X(3)', 'A', 4, 6, 'Synthetic note reference code', 'N', 'Y',
+        2, 1, 'N', '02', 'ADD', NULL, 'Y', 'N', DATE '2026-01-01',
+        '90000000-0000-0000-0000-000000000001', NULL, NULL, 'Y'
+    )
+    INTO hcfa_electronic_fields VALUES (
+        '02', '33000000-0000-0000-0000-000000000001',
+        'NTE02', 'D23001900NTE182', 'GET_REMARKS',
+        'X(100)', 'A', 7, 106, 'Synthetic standard remarks text', 'N', 'Y',
+        3, 1, 'N', '03', NULL, NULL, 'Y', 'N', DATE '2026-01-01',
+        '90000000-0000-0000-0000-000000000001', NULL, NULL, 'Y'
+    )
+    INTO hcfa_electronic_fields VALUES (
+        '03', '33000000-0000-0000-0000-000000000001',
+        'NTE03', 'D23001900NTE182', 'SYN_KEEP_UNMANAGED_NTE',
+        'X(8)', 'A', 107, 114, 'Synthetic unmanaged Remarks HEF', 'N', 'Y',
+        4, 1, 'N', NULL, 'KEEP_NTE03', NULL, 'Y', 'N', DATE '2026-01-01',
+        '90000000-0000-0000-0000-000000000001', NULL, NULL, 'Y'
     )
 SELECT 1 FROM dual;
 

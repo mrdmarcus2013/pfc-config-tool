@@ -23,6 +23,7 @@ const optionFields = [
   { field_number: "77", field_label: "Service Facility", options: serviceOptions },
   { field_number: "81", field_label: "Provider Taxonomy", options: providerOptions },
   { field_number: "39-41", field_label: "Value Codes", options: [] },
+  { field_number: "80", field_label: "Remarks", options: [] },
 ];
 
 test("catalog contains every numbered UB-04 locator in standard order", () => {
@@ -82,6 +83,7 @@ test("API metadata activates only complete supported capabilities", () => {
   assert.equal(capabilityIsAvailable("service-facility", [{ ...optionFields[0], options: serviceOptions.slice(1) }]), false);
   assert.equal(capabilityIsAvailable("provider-taxonomy", []), false);
   assert.equal(capabilityIsAvailable("value-codes", optionFields), true);
+  assert.equal(capabilityIsAvailable("remarks", optionFields), true);
   assert.equal(catalogFieldIsAvailable(CLAIM_FIELD_CATALOG.find((field) => field.fieldNumber === "77"), optionFields), true);
   assert.equal(catalogFieldIsAvailable(CLAIM_FIELD_CATALOG.find((field) => field.fieldNumber === "78"), optionFields), false);
 });

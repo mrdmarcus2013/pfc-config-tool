@@ -58,6 +58,10 @@ SHOW ERRORS PACKAGE pfc_option_registry
 SHOW ERRORS PACKAGE pfc_value_codes
 @@../packages/pfc_value_codes.pkb
 SHOW ERRORS PACKAGE BODY pfc_value_codes
+@@../packages/pfc_remarks.pks
+SHOW ERRORS PACKAGE pfc_remarks
+@@../packages/pfc_remarks.pkb
+SHOW ERRORS PACKAGE BODY pfc_remarks
 @@../packages/pfc_option_registry.pkb
 SHOW ERRORS PACKAGE BODY pfc_option_registry
 

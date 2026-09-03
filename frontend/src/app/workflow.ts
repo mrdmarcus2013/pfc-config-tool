@@ -1,6 +1,7 @@
 import { ApiClientError } from "../api/client.js";
 import type {
   ConfigurationResponse,
+  LineOfBusiness,
   OptionField,
   PreviewRequest,
 } from "../api/types";
@@ -21,6 +22,7 @@ export const capabilityIsAvailable = (
   fields: readonly OptionField[],
 ): boolean => {
   const definition = CONFIGURATION_CAPABILITIES[capabilityKey];
+  if (definition.availability === "structured-endpoint") return true;
   const field = fields.find((candidate) => candidate.field_number === definition.fieldNumber);
   if (!field) return false;
   const optionCodes = new Set(field.options.map((option) => option.option_code));
@@ -33,6 +35,27 @@ export const catalogFieldIsAvailable = (
 ): boolean => Boolean(
   field.capabilityKey && capabilityIsAvailable(field.capabilityKey, fields),
 );
+
+export const catalogFieldIsEditable = (
+  field: ClaimFieldCatalogEntry,
+  fields: readonly OptionField[],
+  lineOfBusiness: LineOfBusiness | null,
+): boolean => catalogFieldIsAvailable(field, fields) && lineOfBusiness !== null;
+
+export const selectCatalogFieldForEditor = (
+  field: ClaimFieldCatalogEntry,
+  fields: readonly OptionField[],
+  lineOfBusiness: LineOfBusiness | null,
+): ClaimFieldCatalogEntry | null =>
+  catalogFieldIsEditable(field, fields, lineOfBusiness) ? field : null;
+
+export const fieldEditorRoute = (
+  field: ClaimFieldCatalogEntry,
+): "value-codes" | "remarks" | "standard" => {
+  if (field.capabilityKey === "value-codes") return "value-codes";
+  if (field.capabilityKey === "remarks") return "remarks";
+  return "standard";
+};
 
 export const serviceFacilityOption = (
   mode: ServiceFacilityMode,

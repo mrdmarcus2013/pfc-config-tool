@@ -11,6 +11,7 @@ from database.run_poc import ACTION_SCRIPTS, connect, execute_script
 
 
 ROOT = Path(__file__).resolve().parents[2]
+READONLY_PATH = ROOT / "database" / "production_tests" / "07_value_codes_readonly.sql"
 PREVIEW_PATH = ROOT / "database" / "production_tests" / "08_value_codes_preview.sql"
 APPLY_PATH = ROOT / "database" / "production_tests" / "09_value_codes_apply_rollback.sql"
 PAYOR = "10000000-0000-0000-0000-00000000D002"
@@ -102,6 +103,17 @@ def output_value(output: list[str], label: str) -> str:
     return next(line[len(prefix):] for line in output if line.startswith(prefix))
 
 
+def execute_readonly(connection: oracledb.Connection) -> tuple[list[str], list[tuple]]:
+    text = READONLY_PATH.read_text(encoding="utf-8").replace(
+        "'PUT_PAYOR_GUID_HERE'", f"'{PAYOR}'", 1
+    )
+    statement = text[text.index("WITH\n"):].rstrip().removesuffix(";")
+    with connection.cursor() as cursor:
+        cursor.execute(statement)
+        columns = [column[0].lower() for column in cursor.description]
+        return columns, cursor.fetchall()
+
+
 @pytest.fixture
 def oracle_connection():
     connection = connect()
@@ -118,6 +130,31 @@ def oracle_connection():
     finally:
         connection.rollback()
         connection.close()
+
+
+def test_readonly_reports_safe_default_and_blocks_unsafe_source(oracle_connection):
+    columns, rows = execute_readonly(oracle_connection)
+    summary = dict(zip(columns, rows[0]))
+    assert summary["output_section"] == "SUMMARY"
+    assert summary["current_effective_status"] == "RESOLVED"
+    assert summary["current_recognized_recipe"] == "DEFAULT"
+    assert summary["source_safety_status"] == "SAFE"
+
+    with oracle_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE hcfa_electronic_records
+            SET mandatory_ind = 'Y'
+            WHERE electronic_rec_guid =
+                '32000000-0000-0000-0000-000000000001'
+            """
+        )
+    columns, rows = execute_readonly(oracle_connection)
+    summary = dict(zip(columns, rows[0]))
+    assert summary["current_effective_status"] == (
+        "BLOCKED_SOURCE_INVALID_MANDATORY"
+    )
+    assert summary["source_safety_status"] == "INVALID_MANDATORY_COMBINATION"
 
 
 @pytest.mark.parametrize(("lob", "flags", "label"), [
@@ -231,6 +268,31 @@ def test_default_no_change_and_remove_override_restore(oracle_connection):
     applied = apply_with_hash(oracle_connection, state_hash, lob="HOME_HEALTH")
     assert "HI VERIFY PASS: 0 HER / 0 HEFs" in applied
     assert "RESTORATION HASH MATCH: YES" in applied
+
+
+def test_default_blocks_unsafe_source_but_explicit_return_1_preserves_mandatory(
+    oracle_connection,
+):
+    with oracle_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE hcfa_electronic_records
+            SET mandatory_ind = 'Y'
+            WHERE electronic_rec_guid =
+                '32000000-0000-0000-0000-000000000001'
+            """
+        )
+    with pytest.raises(HarnessFailure) as raised:
+        preview_and_hash(oracle_connection, lob="HOME_HEALTH")
+    assert "STATUS: BLOCKED" in raised.value.output
+    assert "SOURCE_SAFETY_STATUS: INVALID_MANDATORY_COMBINATION" in raised.value.output
+
+    output, _ = preview_and_hash(
+        oracle_connection, lob="HOME_HEALTH", cbsa="Y",
+    )
+    assert output_value(output, "SOURCE_HER_MANDATORY_IND") == "Y"
+    assert output_value(output, "DESIRED_HER_STO_PROC_NAME") == "RETURN_1"
+    assert output_value(output, "DESIRED_HER_MANDATORY_IND") == "Y"
 
 
 def test_selection_source_and_current_changes_each_reject_stale_hash(oracle_connection):

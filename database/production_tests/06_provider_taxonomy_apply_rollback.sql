@@ -609,6 +609,11 @@ DECLARE
             l_targets(p_target_index).source_hefs;
         l_targets(p_target_index).overlay_her.sto_proc_name :=
             l_targets(p_target_index).desired_sto_proc;
+        IF UPPER(TRIM(l_targets(p_target_index).overlay_her.sto_proc_name)) <>
+                'RETURN_1'
+           OR l_targets(p_target_index).overlay_her.sto_proc_name IS NULL THEN
+            l_targets(p_target_index).overlay_her.mandatory_ind := 'N';
+        END IF;
 
         set_hef_value(
             p_target_index,
@@ -1319,6 +1324,14 @@ BEGIN
     DBMS_OUTPUT.PUT_LINE('PFC_GUID: ' || l_pfc_guid);
     DBMS_OUTPUT.PUT_LINE('BILLING_FORM_CODE: ' || l_billing_form_code);
     DBMS_OUTPUT.PUT_LINE('OPTION: ' || l_option_code);
+    DBMS_OUTPUT.PUT_LINE('SOURCE_HER_STO_PROC_NAME: ' ||
+        shown(l_targets(1).source_her.sto_proc_name));
+    DBMS_OUTPUT.PUT_LINE('SOURCE_HER_MANDATORY_IND: ' ||
+        shown(l_targets(1).source_her.mandatory_ind));
+    DBMS_OUTPUT.PUT_LINE('DESIRED_HER_STO_PROC_NAME: ' ||
+        shown(l_targets(1).desired_her.sto_proc_name));
+    DBMS_OUTPUT.PUT_LINE('DESIRED_HER_MANDATORY_IND: ' ||
+        shown(l_targets(1).desired_her.mandatory_ind));
     DBMS_OUTPUT.PUT_LINE('EXPECTED PREVIEW HASH: ' || l_expected_hash);
     DBMS_OUTPUT.PUT_LINE('RECALCULATED HASH: ' || l_recalculated_hash);
 

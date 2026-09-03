@@ -20,6 +20,8 @@ TOOL_OWNED_ORACLE_OBJECTS = {
     "PFC_OPTION_REGISTRY",
     "PFC_VALUE_CODES",
     "PFC_VALUE_CODES_API",
+    "PFC_REMARKS",
+    "PFC_REMARKS_API",
     "PFC_LINE_OF_BUSINESS",
     "PFC_APPLY_OPTION",
     "PFC_GET_CURRENT_CONFIG",
@@ -31,10 +33,19 @@ TOOL_OWNED_ORACLE_OBJECTS = {
 }
 
 READ_ONLY_SCRIPTS = {
+    "03_service_facility_preview.sql",
+    "05_provider_taxonomy_preview.sql",
     "07_value_codes_readonly.sql",
     "08_value_codes_preview.sql",
+    "10_remarks_readonly.sql",
+    "11_remarks_preview.sql",
 }
-ROLLBACK_ONLY_SCRIPTS = {"09_value_codes_apply_rollback.sql"}
+ROLLBACK_ONLY_SCRIPTS = {
+    "04_service_facility_apply_rollback.sql",
+    "06_provider_taxonomy_apply_rollback.sql",
+    "09_value_codes_apply_rollback.sql",
+    "12_remarks_apply_rollback.sql",
+}
 READ_ONLY_FORBIDDEN = {
     "INSERT", "UPDATE", "DELETE", "MERGE",
     "CREATE", "ALTER", "DROP", "TRUNCATE", "COMMIT",
@@ -159,3 +170,47 @@ def test_value_codes_preview_and_apply_share_exact_state_and_hash_contract() -> 
     )
     for start, end in shared_sections:
         assert section(preview, start, end) == section(apply, start, end)
+
+
+def test_remarks_preview_and_apply_share_exact_state_and_hash_contract() -> None:
+    preview = (PRODUCTION_SCRIPTS / "11_remarks_preview.sql").read_text(
+        encoding="utf-8"
+    )
+    apply = (PRODUCTION_SCRIPTS / "12_remarks_apply_rollback.sql").read_text(
+        encoding="utf-8"
+    )
+    preview_contract = section(
+        preview, "    /* HASH CONTRACT START", "    /* HASH CONTRACT END */"
+    ).replace("Script 12", "paired script")
+    apply_contract = section(
+        apply, "    /* HASH CONTRACT START", "    /* HASH CONTRACT END */"
+    ).replace("Script 11", "paired script")
+    assert preview_contract == apply_contract
+
+
+@pytest.mark.parametrize(
+    ("preview_name", "apply_name"),
+    [
+        ("03_service_facility_preview.sql", "04_service_facility_apply_rollback.sql"),
+        ("05_provider_taxonomy_preview.sql", "06_provider_taxonomy_apply_rollback.sql"),
+        ("08_value_codes_preview.sql", "09_value_codes_apply_rollback.sql"),
+        ("11_remarks_preview.sql", "12_remarks_apply_rollback.sql"),
+    ],
+)
+def test_preview_and_apply_include_her_mandatory_safety_and_hash_inputs(
+    preview_name: str, apply_name: str,
+) -> None:
+    preview = (PRODUCTION_SCRIPTS / preview_name).read_text(encoding="utf-8")
+    apply = (PRODUCTION_SCRIPTS / apply_name).read_text(encoding="utf-8")
+    for name, text in ((preview_name, preview), (apply_name, apply)):
+        upper = text.upper()
+        assert "MANDATORY_IND" in upper, name
+        assert "RETURN_1" in upper, name
+        assert "DESIRED_HER_MANDATORY_IND" in upper or (
+            "OVERLAY_HER.MANDATORY_IND := 'N'" in upper
+        ), name
+        assert re.search(
+            r"MANDATORY_IND.*STO_PROC_NAME|STO_PROC_NAME.*MANDATORY_IND",
+            upper,
+            re.S,
+        ), name

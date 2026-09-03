@@ -700,6 +700,18 @@ DECLARE
             l_targets(p_target_index).source_hefs;
         IF l_cbsa = 'N' AND l_fips = 'N' AND l_care_location = 'N'
            AND l_patient_entered = 'N' AND l_covered_days = 'N' THEN
+            IF NVL(UPPER(TRIM(
+                    l_targets(p_target_index).source_her.sto_proc_name)),
+                    '<NULL>') <> 'RETURN_1'
+               AND NVL(UPPER(TRIM(
+                    l_targets(p_target_index).source_her.mandatory_ind)),
+                    '<NULL>') <> 'N' THEN
+                DBMS_OUTPUT.PUT_LINE('STATUS: BLOCKED');
+                DBMS_OUTPUT.PUT_LINE(
+                    'SOURCE_SAFETY_STATUS: INVALID_MANDATORY_COMBINATION');
+                RAISE_APPLICATION_ERROR(c_err_resolution,
+                    'The inherited Value Codes source violates the mandatory-record rule; correct the template or billing-form source.');
+            END IF;
             l_targets(p_target_index).desired_sto_proc :=
                 l_targets(p_target_index).source_her.sto_proc_name;
         ELSE
@@ -762,6 +774,14 @@ DECLARE
                 set_managed_pair(p_target_index, '025',
                     'GET_VAL_CODE_AMT', NULL);
             END IF;
+        END IF;
+
+        IF NOT (l_cbsa = 'N' AND l_fips = 'N' AND l_care_location = 'N'
+                AND l_patient_entered = 'N' AND l_covered_days = 'N')
+           AND (UPPER(TRIM(l_targets(p_target_index).overlay_her.sto_proc_name)) <>
+                    'RETURN_1'
+                OR l_targets(p_target_index).overlay_her.sto_proc_name IS NULL) THEN
+            l_targets(p_target_index).overlay_her.mandatory_ind := 'N';
         END IF;
 
         IF configurations_equal(
@@ -1516,6 +1536,15 @@ BEGIN
     DBMS_OUTPUT.PUT_LINE('BILLING_FORM_CODE: ' || l_billing_form_code);
     DBMS_OUTPUT.PUT_LINE('RECORD_TYPE_CODE: D23002310HI286');
     DBMS_OUTPUT.PUT_LINE('SELECTION: ' || l_selection_label);
+    DBMS_OUTPUT.PUT_LINE('SOURCE_HER_STO_PROC_NAME: ' ||
+        shown(l_targets(1).source_her.sto_proc_name));
+    DBMS_OUTPUT.PUT_LINE('SOURCE_HER_MANDATORY_IND: ' ||
+        shown(l_targets(1).source_her.mandatory_ind));
+    DBMS_OUTPUT.PUT_LINE('SOURCE_SAFETY_STATUS: SAFE');
+    DBMS_OUTPUT.PUT_LINE('DESIRED_HER_STO_PROC_NAME: ' ||
+        shown(l_targets(1).desired_her.sto_proc_name));
+    DBMS_OUTPUT.PUT_LINE('DESIRED_HER_MANDATORY_IND: ' ||
+        shown(l_targets(1).desired_her.mandatory_ind));
     DBMS_OUTPUT.PUT_LINE('EXPECTED PREVIEW HASH: ' || l_expected_hash);
     DBMS_OUTPUT.PUT_LINE('RECALCULATED HASH: ' || l_recalculated_hash);
 

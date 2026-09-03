@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 
 GuidText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=36)]
@@ -23,6 +30,8 @@ StateHash = Annotated[
     str,
     StringConstraints(strip_whitespace=True, pattern=r"^[0-9A-F]{64}$"),
 ]
+REMARKS_CUSTOM_REMARK_MAX_LENGTH = 100
+RemarksMode = Literal["DEFAULT", "CUSTOM"]
 
 
 class HealthResponse(BaseModel):
@@ -210,6 +219,67 @@ class ValueCodesChangeResponse(BaseModel):
     status: Literal["PREVIEW", "APPLIED", "NO_CHANGE"]
     is_default: bool
     selections: ValueCodeSelections
+    display_summary: str
+    state_hash: StateHash
+    change_count: int
+    summary: str
+    pfc_guid: str | None = None
+    debug_changes: list[TechnicalChange] = Field(default_factory=list)
+
+
+class RemarksCurrentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    payor_guid: GuidText
+    plan_guid: GuidText | None = None
+
+
+class RemarksChangeRequest(RemarksCurrentRequest):
+    mode: RemarksMode
+    custom_remark: str | None = None
+    audit_user: GuidText
+
+    @field_validator("custom_remark", mode="before")
+    @classmethod
+    def trim_custom_remark(cls, value: object) -> object:
+        if isinstance(value, str):
+            trimmed = value.strip()
+            return trimmed or None
+        return value
+
+    @model_validator(mode="after")
+    def validate_mode_and_text(self) -> "RemarksChangeRequest":
+        if self.mode == "DEFAULT":
+            if self.custom_remark is not None:
+                raise ValueError("Default Remarks cannot include custom text.")
+            return self
+        if self.custom_remark is None:
+            raise ValueError("Custom remark text is required.")
+        if len(self.custom_remark) > REMARKS_CUSTOM_REMARK_MAX_LENGTH:
+            raise ValueError(
+                "Custom remark text exceeds the configured maximum length."
+            )
+        return self
+
+
+class RemarksApplyRequest(RemarksChangeRequest):
+    expected_state_hash: StateHash
+
+
+class RemarksCurrentResponse(BaseModel):
+    configuration_status: Literal["RESOLVED"]
+    line_of_business: LineOfBusiness
+    mode: RemarksMode
+    custom_remark: str | None
+    canonical_status: str
+    display_summary: str
+    pfc_guid: str
+    debug: dict[str, object] = Field(default_factory=dict)
+
+
+class RemarksChangeResponse(BaseModel):
+    status: Literal["PREVIEW", "APPLIED", "NO_CHANGE"]
+    mode: RemarksMode
+    custom_remark: str | None
     display_summary: str
     state_hash: StateHash
     change_count: int

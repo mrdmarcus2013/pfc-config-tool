@@ -23,12 +23,14 @@ export interface ConfigurationCapabilityDefinition {
   capabilityKey: ClaimFieldCapabilityKey;
   fieldNumber: string;
   optionCodes: readonly PublicOptionCode[];
+  availability: "public-options" | "structured-endpoint";
 }
 
 export const CONFIGURATION_CAPABILITIES = {
   "service-facility": {
     capabilityKey: "service-facility",
     fieldNumber: "77",
+    availability: "public-options",
     optionCodes: [
       "SERVICE_FACILITY_ALWAYS_ADDRESS_YES",
       "SERVICE_FACILITY_ALWAYS_ADDRESS_NO",
@@ -40,12 +42,20 @@ export const CONFIGURATION_CAPABILITIES = {
   "provider-taxonomy": {
     capabilityKey: "provider-taxonomy",
     fieldNumber: "81",
+    availability: "public-options",
     optionCodes: ["PROVIDER_TAXONOMY_ON", "PROVIDER_TAXONOMY_OFF"],
   },
   "value-codes": {
     capabilityKey: "value-codes",
     fieldNumber: "39-41",
     optionCodes: [],
+    availability: "structured-endpoint",
+  },
+  "remarks": {
+    capabilityKey: "remarks",
+    fieldNumber: "80",
+    optionCodes: [],
+    availability: "structured-endpoint",
   },
 } as const satisfies Readonly<
   Record<ClaimFieldCapabilityKey, ConfigurationCapabilityDefinition>
@@ -58,6 +68,7 @@ export const CONFIGURATION_CAPABILITIES = {
 export const CAPABILITY_KEY_BY_API_FIELD_NUMBER = {
   "39-41": "value-codes",
   "77": "service-facility",
+  "80": "remarks",
   "81": "provider-taxonomy",
 } as const satisfies Readonly<Record<string, ClaimFieldCapabilityKey>>;
 

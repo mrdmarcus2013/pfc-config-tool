@@ -530,12 +530,28 @@ IS
         l_index PLS_INTEGER;
         l_seen  t_seen_map;
     BEGIN
+        IF l_option.inherit_source_ind IS NULL
+           OR l_option.inherit_source_ind NOT IN ('Y', 'N') THEN
+            RAISE_APPLICATION_ERROR(c_err_invalid_option,
+                'The option definition has an invalid inheritance indicator.');
+        END IF;
         IF l_option.option_code IS NULL
            OR l_option.display_label IS NULL
            OR l_option.phys_form_field_num IS NULL
            OR l_option.targets.COUNT = 0 THEN
             RAISE_APPLICATION_ERROR(c_err_invalid_option,
                 'The option definition is incomplete.');
+        END IF;
+        IF l_option.inherit_source_ind = 'Y' THEN
+            l_index := l_option.targets.FIRST;
+            WHILE l_index IS NOT NULL LOOP
+                IF l_option.targets(l_index).her_requirements.COUNT <> 0
+                   OR l_option.targets(l_index).hef_requirements.COUNT <> 0 THEN
+                    RAISE_APPLICATION_ERROR(c_err_invalid_option,
+                        'An inherited option cannot contain desired-state overlays.');
+                END IF;
+                l_index := l_option.targets.NEXT(l_index);
+            END LOOP;
         END IF;
         l_index := l_option.targets.FIRST;
         WHILE l_index IS NOT NULL LOOP
@@ -933,6 +949,15 @@ IS
         WHERE f.electronic_rec_guid = l_targets(p_state_index).source_guid;
 
         apply_overlay(p_state_index);
+        IF l_option.inherit_source_ind = 'Y' THEN
+            pfc_config_internal.assert_inherited_her_safe(
+                l_targets(p_state_index).source_her
+            );
+        ELSE
+            pfc_config_internal.apply_her_safety_invariants(
+                l_targets(p_state_index).overlay_her
+            );
+        END IF;
         l_targets(p_state_index).desired_differs := NOT configurations_equal(
             l_targets(p_state_index).source_her,
             l_targets(p_state_index).source_hefs,
@@ -1032,10 +1057,11 @@ IS
         l_temp_hefs t_hef_rows;
     BEGIN
         l_state_serial := NULL;
-        append_state('PFC_APPLY_OPTION_STATE_V2');
+        append_state('PFC_APPLY_OPTION_STATE_V3');
         append_state(l_option.option_code);
         append_state(l_option.display_label);
         append_state(l_option.phys_form_field_num);
+        append_state(l_option.inherit_source_ind);
         append_state(l_pfc_guid);
         append_state(l_resolved_payor_guid);
         append_state(l_resolved_plan_guid);
@@ -1709,6 +1735,7 @@ EXCEPTION
             pfc_option_registry.c_err_unknown_option,
             pfc_config_internal.c_err_pfc_not_found,
             pfc_config_internal.c_err_pfc_start_date_tie,
+            pfc_config_internal.c_err_unsafe_source,
             -20020, -20021,
             c_err_invalid_mode,
             c_err_missing_audit_user,

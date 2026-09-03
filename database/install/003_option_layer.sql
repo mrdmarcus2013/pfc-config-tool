@@ -8,6 +8,10 @@ SHOW ERRORS PACKAGE BODY pfc_option_types
 SHOW ERRORS PACKAGE pfc_value_codes
 @@../packages/pfc_value_codes.pkb
 SHOW ERRORS PACKAGE BODY pfc_value_codes
+@@../packages/pfc_remarks.pks
+SHOW ERRORS PACKAGE pfc_remarks
+@@../packages/pfc_remarks.pkb
+SHOW ERRORS PACKAGE BODY pfc_remarks
 @@../functions/options/pfc_opt_provider_taxonomy_on.sql
 SHOW ERRORS FUNCTION pfc_opt_provider_taxonomy_on
 @@../functions/options/pfc_opt_provider_taxonomy_off.sql
@@ -28,6 +32,7 @@ BEGIN
     WHERE object_name IN (
         'PFC_OPTION_TYPES',
         'PFC_VALUE_CODES',
+        'PFC_REMARKS',
         'PFC_OPT_PROVIDER_TAXONOMY_ON',
         'PFC_OPT_PROVIDER_TAXONOMY_OFF',
         'PFC_OPT_SERVICE_FACILITY',

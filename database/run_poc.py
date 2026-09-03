@@ -17,7 +17,10 @@ PROJECT_DIR = DATABASE_DIR.parent
 ACTION_SCRIPTS = {
     "install": [DATABASE_DIR / "install" / "install_all.sql"],
     "prep3": [DATABASE_DIR / "install" / "005_prep_script_3.sql"],
-    "install3": [DATABASE_DIR / "install" / "005_script_3.sql"],
+    "install3": [
+        DATABASE_DIR / "install" / "004_scripts_1_2.sql",
+        DATABASE_DIR / "install" / "005_script_3.sql",
+    ],
     "install_lob": [
         DATABASE_DIR / "install" / "003_option_layer.sql",
         DATABASE_DIR / "install" / "005_script_3.sql",
@@ -28,6 +31,13 @@ ACTION_SCRIPTS = {
         DATABASE_DIR / "install" / "005_script_3.sql",
         DATABASE_DIR / "install" / "006_line_of_business.sql",
         DATABASE_DIR / "install" / "007_value_codes_discovery.sql",
+    ],
+    "install_remarks": [
+        DATABASE_DIR / "install" / "005_prep_script_3.sql",
+        DATABASE_DIR / "install" / "005_script_3.sql",
+        DATABASE_DIR / "install" / "006_line_of_business.sql",
+        DATABASE_DIR / "install" / "007_value_codes_discovery.sql",
+        DATABASE_DIR / "install" / "008_remarks.sql",
     ],
     "test": [DATABASE_DIR / "tests" / "run_all.sql"],
     "test3": [DATABASE_DIR / "tests" / "test_03_apply_option.sql"],

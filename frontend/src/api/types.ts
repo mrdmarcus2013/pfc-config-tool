@@ -125,3 +125,35 @@ export interface ValueCodesChangeResponse {
   pfc_guid: string | null;
   debug_changes: TechnicalChange[];
 }
+
+export type RemarksMode = "DEFAULT" | "CUSTOM";
+export interface RemarksCurrentRequest { payor_guid: string; plan_guid: string | null }
+export interface RemarksChangeRequest extends RemarksCurrentRequest {
+  mode: RemarksMode;
+  custom_remark: string | null;
+  audit_user: string;
+}
+export interface RemarksApplyRequest extends RemarksChangeRequest {
+  expected_state_hash: string;
+}
+export interface RemarksCurrentResponse {
+  configuration_status: "RESOLVED";
+  line_of_business: LineOfBusiness;
+  mode: RemarksMode;
+  custom_remark: string | null;
+  canonical_status: string;
+  display_summary: string;
+  pfc_guid: string;
+  debug: Record<string, unknown>;
+}
+export interface RemarksChangeResponse {
+  status: "PREVIEW" | "APPLIED" | "NO_CHANGE";
+  mode: RemarksMode;
+  custom_remark: string | null;
+  display_summary: string;
+  state_hash: string;
+  change_count: number;
+  summary: string;
+  pfc_guid: string | null;
+  debug_changes: TechnicalChange[];
+}

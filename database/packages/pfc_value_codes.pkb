@@ -174,6 +174,8 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
             WHEN c_recipe_hospice_vc80 THEN 'Value code 80 with days covered'
         END;
         l_option.phys_form_field_num := '39-41';
+        l_option.inherit_source_ind :=
+            CASE WHEN p_recipe_id = c_recipe_default THEN 'Y' ELSE 'N' END;
         l_option.targets(1).target_code := c_target_code;
         l_option.targets(1).billing_form_code := c_billing_form_code;
         l_option.targets(1).record_type_code := c_record_type_code;

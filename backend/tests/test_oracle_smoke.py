@@ -25,11 +25,14 @@ def test_installed_synthetic_oracle_poc_preview():
         fields = {
             field["field_number"]: field for field in options.json()["fields"]
         }
-        assert set(fields) == {"39-41", "77", "81"}
+        assert set(fields) == {"39-41", "77", "80", "81"}
         assert fields["81"]["field_label"] == "Provider Taxonomy"
         assert fields["77"]["field_label"] == "Service Facility"
         assert fields["39-41"] == {
             "field_number": "39-41", "field_label": "Value Codes", "options": []
+        }
+        assert fields["80"] == {
+            "field_number": "80", "field_label": "Remarks", "options": []
         }
 
         undefined_lob = client.post(
@@ -71,6 +74,28 @@ def test_installed_synthetic_oracle_poc_preview():
         assert value_current.status_code == 200
         assert value_current.json()["is_default"] is True
         assert not any(value_current.json()["selections"].values())
+
+        remarks_current = client.post("/api/config/remarks/current", json={
+            "payor_guid": "10000000-0000-0000-0000-00000000D002",
+            "plan_guid": None,
+        })
+        assert remarks_current.status_code == 200
+        assert remarks_current.json()["mode"] == "DEFAULT"
+        assert remarks_current.json()["custom_remark"] is None
+
+        remarks_preview = client.post("/api/config/remarks/preview", json={
+            "payor_guid": "10000000-0000-0000-0000-00000000D002",
+            "plan_guid": None,
+            "mode": "CUSTOM",
+            "custom_remark": "Synthetic smoke-test remark",
+            "audit_user": "90000000-0000-0000-0000-000000000003",
+        })
+        assert remarks_preview.status_code == 200
+        assert remarks_preview.json()["mode"] == "CUSTOM"
+        assert remarks_preview.json()["custom_remark"] == (
+            "Synthetic smoke-test remark"
+        )
+        assert "option" not in remarks_preview.text.lower()
 
         value_preview = client.post("/api/config/value-codes/preview", json={
             "payor_guid": "10000000-0000-0000-0000-00000000D002",

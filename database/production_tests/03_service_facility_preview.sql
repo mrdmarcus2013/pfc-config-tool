@@ -318,6 +318,12 @@ source_resolution AS (
         CASE WHEN n.best_source_count = 1
             THEN MAX(s.sto_proc_name) END AS source_her_sto_proc_name,
         CASE WHEN n.best_source_count = 1
+            THEN MAX(s.mandatory_ind) END AS source_her_mandatory_ind,
+        CASE WHEN n.best_source_count = 1 THEN
+            CASE WHEN UPPER(TRIM(c.desired_her_sto_proc_name)) = 'RETURN_1'
+                THEN MAX(s.mandatory_ind) ELSE 'N' END
+        END AS desired_her_mandatory_ind,
+        CASE WHEN n.best_source_count = 1
             THEN MAX(s.form_template_guid) END AS source_form_template_guid,
         CASE WHEN n.best_source_count = 1
             THEN MAX(s.user_form_template_guid) END
@@ -470,7 +476,10 @@ source_desired_status AS (
                     1,
                     0
                  ) = 1
-             AND NVL(d.changed_hef_count, 0) = 0 THEN 'Y'
+             AND NVL(d.changed_hef_count, 0) = 0
+             AND DECODE(s.source_her_mandatory_ind,
+                    s.desired_her_mandatory_ind, 1, 0) = 1
+                THEN 'Y'
             ELSE 'N'
         END AS source_equals_desired
     FROM source_resolution s
@@ -523,7 +532,8 @@ current_her_validation AS (
              AND DECODE(h.record_name, src.record_name, 1, 0) = 1
              AND DECODE(h.record_type_code, src.record_type_code, 1, 0) = 1
              AND DECODE(h.record_size, src.record_size, 1, 0) = 1
-             AND DECODE(h.mandatory_ind, src.mandatory_ind, 1, 0) = 1
+             AND DECODE(h.mandatory_ind,
+                    s.desired_her_mandatory_ind, 1, 0) = 1
              AND DECODE(h.req_for_claim_ind, src.req_for_claim_ind, 1, 0) = 1
              AND (h.payor_type_guid = s.payor_type_guid
                   OR h.payor_type_guid IS NULL)
@@ -597,7 +607,7 @@ current_her_validation AS (
                     THEN 'RECORD_SIZE; ' END ||
                 CASE WHEN DECODE(
                         h.mandatory_ind,
-                        src.mandatory_ind,
+                        s.desired_her_mandatory_ind,
                         1,
                         0
                     ) = 0 THEN 'MANDATORY_IND; ' END ||
@@ -678,6 +688,7 @@ current_her_validation AS (
         h.record_size AS current_her_record_size,
         src.mandatory_ind AS source_her_mandatory_ind,
         h.mandatory_ind AS current_her_mandatory_ind,
+        s.desired_her_mandatory_ind,
         src.req_for_claim_ind AS source_her_req_for_claim_ind,
         h.req_for_claim_ind AS current_her_req_for_claim_ind,
         src.payor_type_guid AS source_her_payor_type_guid,
@@ -963,7 +974,6 @@ comparison_summary AS (
         h.current_her_record_type_code,
         h.source_her_record_size,
         h.current_her_record_size,
-        h.source_her_mandatory_ind,
         h.current_her_mandatory_ind,
         h.source_her_req_for_claim_ind,
         h.current_her_req_for_claim_ind,
@@ -1363,7 +1373,7 @@ SELECT
     d.source_her_record_size AS desired_her_record_size,
     d.source_her_mandatory_ind,
     d.current_her_mandatory_ind,
-    d.source_her_mandatory_ind AS desired_her_mandatory_ind,
+    d.desired_her_mandatory_ind,
     d.source_her_req_for_claim_ind,
     d.current_her_req_for_claim_ind,
     d.source_her_req_for_claim_ind AS desired_her_req_for_claim_ind,

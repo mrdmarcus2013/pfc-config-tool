@@ -183,7 +183,7 @@ INSERT ALL
         rec_ent_date, rec_ent_user, include_record_data_onclaim
     ) VALUES (
         '30000000-0000-0000-0000-0000000000B1', 'PRV', 'Y', 'UB04',
-        'Synthetic Generic Provider', 'B2000A0030PRV080', 80, 'Y', 'Y',
+        'Synthetic Generic Provider', 'B2000A0030PRV080', 80, 'N', 'Y',
         NULL,
         '10000000-0000-0000-0000-0000000000A2', NULL, NULL,
         'N', '1', 'N', NULL, NULL, 0, 'RETURN_1', NULL,
