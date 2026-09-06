@@ -1,6 +1,7 @@
 """Thin transaction adapter for the Oracle payor-copy engine."""
 import json
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import oracledb
@@ -27,6 +28,14 @@ def _copy_response(raw: Any) -> CopyResponse:
     return CopyResponse.model_validate(json.loads(raw.read() if hasattr(raw, "read") else raw))
 
 
+def _cleanup_safely(action: Callable[[], None], operation: str) -> None:
+    """Cleanup must not replace a known result or the primary operation error."""
+    try:
+        action()
+    except Exception as exc:
+        logger.error("Payor copy %s cleanup failed (%s)", operation, type(exc).__name__)
+
+
 COPY_ERRORS = {
     20100: "A valid copy request and audit identity are required.",
     20101: "Choose a destination payor different from the source.",
@@ -46,40 +55,42 @@ class PayorCopyService:
 
     def destinations(self, request: CopyDestinationRequest) -> CopyDestinationsResponse:
         """Run the actual Oracle preview for candidates in one read-only snapshot."""
-        connection = None
+        connection = cursor = None
         try:
             connection = self._connection_factory()
-            with connection.cursor() as cursor:
-                cursor.execute("SET TRANSACTION READ ONLY")
-                cursor.execute("""SELECT payor_guid, payor_name FROM payors
-                    WHERE payor_id LIKE 'SYN-%' AND payor_guid <> :source_payor
-                    ORDER BY payor_name, payor_guid""", source_payor=request.source_payor_guid)
-                candidates = cursor.fetchall()
-                destinations = []
-                for payor_guid, payor_name in candidates:
-                    output = cursor.var(oracledb.DB_TYPE_CLOB)
-                    try:
-                        cursor.execute("""BEGIN pfc_copy.run_copy(
-                            :source_payor, :source_plan, :destination_payor, 'PREVIEW',
-                            :audit_user, NULL, :result); END;""",
-                            source_payor=request.source_payor_guid,
-                            source_plan=request.source_plan_guid,
-                            destination_payor=payor_guid, audit_user=request.audit_user,
-                            result=output)
-                    except oracledb.DatabaseError as exc:
-                        # Only known configuration blockers mean ineligible. Database
-                        # failures must not masquerade as an empty destination list.
-                        if getattr(exc.args[0], "code", None) in {
-                            20101, 20102, 20103, 20104, 20105,
-                            20010, 20011, 20012, 20020, 20021, 20050, 20053,
-                        }:
-                            continue
-                        raise
-                    result = _copy_response(output.getvalue())
-                    if result.status not in {"READY", "NO_CHANGE"}:
-                        raise ValueError("Unexpected eligibility response")
-                    destinations.append(CopyDestination(payor_guid=payor_guid, payor_name=payor_name))
+            cursor = connection.cursor()
+            cursor.execute("SET TRANSACTION READ ONLY")
+            cursor.execute("""SELECT payor_guid, payor_name FROM payors
+                WHERE payor_id LIKE 'SYN-%' AND payor_guid <> :source_payor
+                ORDER BY payor_name, payor_guid""", source_payor=request.source_payor_guid)
+            candidates = cursor.fetchall()
+            destinations = []
+            for payor_guid, payor_name in candidates:
+                output = cursor.var(oracledb.DB_TYPE_CLOB)
+                try:
+                    cursor.execute("""BEGIN pfc_copy.run_copy(
+                        :source_payor, :source_plan, :destination_payor, 'PREVIEW',
+                        :audit_user, NULL, :result); END;""",
+                        source_payor=request.source_payor_guid,
+                        source_plan=request.source_plan_guid,
+                        destination_payor=payor_guid, audit_user=request.audit_user,
+                        result=output)
+                except oracledb.DatabaseError as exc:
+                    # Only known configuration blockers mean ineligible. Database
+                    # failures must not masquerade as an empty destination list.
+                    if getattr(exc.args[0], "code", None) in {
+                        20101, 20102, 20103, 20104, 20105,
+                        20010, 20011, 20012, 20020, 20021, 20050, 20053,
+                    }:
+                        continue
+                    raise
+                result = _copy_response(output.getvalue())
+                if result.status not in {"READY", "NO_CHANGE"}:
+                    raise ValueError("Unexpected eligibility response")
+                destinations.append(CopyDestination(payor_guid=payor_guid, payor_name=payor_name))
             return CopyDestinationsResponse(destinations=destinations)
+        except ApiError:
+            raise
         except oracledb.DatabaseError as exc:
             raise translate_oracle_error(exc, "copy eligibility") from None
         except DatabaseConfigurationError:
@@ -88,50 +99,60 @@ class PayorCopyService:
             logger.error("Copy eligibility failed (%s)", type(exc).__name__)
             raise ApiError(500, "application_failure", "Eligible destination payors could not be loaded.") from None
         finally:
+            if cursor is not None:
+                _cleanup_safely(cursor.close, "cursor close")
             if connection is not None:
-                try:
-                    connection.rollback()
-                finally:
-                    connection.close()
+                _cleanup_safely(connection.rollback, "rollback")
+                _cleanup_safely(connection.close, "connection close")
 
     def run(self, request: CopyPreviewRequest, *, apply: bool = False) -> CopyResponse:
-        connection = None
+        connection = cursor = None
+        committed = False
         try:
             connection = self._connection_factory()
-            with connection.cursor() as cursor:
-                if not apply:
-                    cursor.execute("SET TRANSACTION READ ONLY")
-                output = cursor.var(oracledb.DB_TYPE_CLOB)
-                cursor.execute("""BEGIN pfc_copy.run_copy(
-                    :source_payor, :source_plan, :destination_payor, :mode,
-                    :audit_user, :expected_hash, :result); END;""",
-                    source_payor=request.source_payor_guid,
-                    source_plan=request.source_plan_guid,
-                    destination_payor=request.destination_payor_guid,
-                    mode="APPLY" if apply else "PREVIEW",
-                    audit_user=request.audit_user,
-                    expected_hash=getattr(request, "expected_state_hash", None),
-                    result=output)
-                response = _copy_response(output.getvalue())
-                if (apply and response.status != "APPLIED") or (not apply and response.status == "APPLIED"):
-                    raise ValueError("Unexpected copy operation response")
+            cursor = connection.cursor()
+            if not apply:
+                cursor.execute("SET TRANSACTION READ ONLY")
+            output = cursor.var(oracledb.DB_TYPE_CLOB)
+            cursor.execute("""BEGIN pfc_copy.run_copy(
+                :source_payor, :source_plan, :destination_payor, :mode,
+                :audit_user, :expected_hash, :result); END;""",
+                source_payor=request.source_payor_guid,
+                source_plan=request.source_plan_guid,
+                destination_payor=request.destination_payor_guid,
+                mode="APPLY" if apply else "PREVIEW",
+                audit_user=request.audit_user,
+                expected_hash=getattr(request, "expected_state_hash", None),
+                result=output)
+            response = _copy_response(output.getvalue())
+            if (apply and response.status != "APPLIED") or (not apply and response.status == "APPLIED"):
+                raise ValueError("Unexpected copy operation response")
             if apply:
+                # Ensure the complete response can be serialized before saving.
+                response.model_dump_json()
+                # Preserve the pre-commit cursor-close boundary. A failure here
+                # still prevents committing; later connection cleanup does not.
+                completed_cursor, cursor = cursor, None
+                completed_cursor.close()
                 connection.commit()
-            else:
-                connection.rollback()
+                committed = True
             return response
+        except ApiError:
+            raise
         except oracledb.DatabaseError as exc:
-            if connection is not None: connection.rollback()
             code = getattr(exc.args[0], "code", None)
             if code in COPY_ERRORS:
                 raise ApiError(409, "stale_preview" if code == 20106 else "copy_blocked", COPY_ERRORS[code]) from None
             raise translate_oracle_error(exc, "payor copy") from None
         except DatabaseConfigurationError:
-            if connection is not None: connection.rollback()
             raise ApiError(503, "database_failure", "The database connection is not configured.") from None
         except Exception as exc:
-            if connection is not None: connection.rollback()
             logger.error("Payor copy failed (%s)", type(exc).__name__)
             raise ApiError(500, "application_failure", "The copy could not be completed safely. No changes were saved.") from None
         finally:
-            if connection is not None: connection.close()
+            if cursor is not None:
+                _cleanup_safely(cursor.close, "cursor close")
+            if connection is not None:
+                if not committed:
+                    _cleanup_safely(connection.rollback, "rollback")
+                _cleanup_safely(connection.close, "connection close")

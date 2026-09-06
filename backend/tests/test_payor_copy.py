@@ -118,3 +118,179 @@ def test_destinations_do_not_hide_database_failures():
             source_payor_guid="SYN-SOURCE", audit_user="SYN-USER"))
     assert error.value.category == "database_failure"
     assert connection.commits == 0 and connection.rollbacks == 1 and connection.closed
+
+
+class CleanupCursor:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def var(self, *args):
+        return self.connection.var(*args)
+
+    def execute(self, sql, **params):
+        self.connection.execute(sql, **params)
+
+    def fetchall(self):
+        return [("SYN-DESTINATION", "Synthetic destination")]
+
+    def close(self):
+        self.connection.events.append("cursor.close")
+        if self.connection.cursor_error is not None:
+            raise self.connection.cursor_error
+
+
+class CleanupConnection(Connection):
+    def __init__(self, result=None, error=None, *, cursor_error=None, rollback_error=None,
+                 close_error=None, commit_error=None):
+        super().__init__(result, error)
+        self.cursor_error = cursor_error
+        self.rollback_error = rollback_error
+        self.close_error = close_error
+        self.commit_error = commit_error
+        self.events = []
+
+    def cursor(self):
+        return CleanupCursor(self)
+
+    def commit(self):
+        self.events.append("commit")
+        if self.commit_error is not None:
+            raise self.commit_error
+        super().commit()
+
+    def rollback(self):
+        self.events.append("rollback")
+        super().rollback()
+        if self.rollback_error is not None:
+            raise self.rollback_error
+
+    def close(self):
+        self.events.append("connection.close")
+        super().close()
+        if self.close_error is not None:
+            raise self.close_error
+
+
+def failing_cleanup(**overrides):
+    return {"cursor_error": RuntimeError("private cursor cleanup detail"),
+            "rollback_error": RuntimeError("private rollback cleanup detail"),
+            "close_error": RuntimeError("private connection cleanup detail"), **overrides}
+
+
+def test_saved_copy_survives_connection_cleanup_failure(caplog):
+    connection = CleanupConnection({**RESPONSE, "status": "APPLIED"},
+                                   close_error=RuntimeError("private connection cleanup detail"))
+    result = PayorCopyService(lambda: connection).run(
+        CopyApplyRequest(**REQUEST, expected_state_hash="B" * 64), apply=True)
+    assert result.status == "APPLIED"
+    assert connection.commits == 1 and connection.rollbacks == 0
+    assert connection.events == ["cursor.close", "commit", "connection.close"]
+    assert "private connection cleanup detail" not in caplog.text
+
+
+def test_saved_copy_api_response_survives_connection_cleanup_failure():
+    connection = CleanupConnection({**RESPONSE, "status": "APPLIED"},
+                                   close_error=RuntimeError("private connection cleanup detail"))
+    app.dependency_overrides[get_copy_service] = lambda: PayorCopyService(lambda: connection)
+    try:
+        with TestClient(app) as client:
+            response = client.post("/api/payor-copy/apply", json={**REQUEST, "expected_state_hash": "B" * 64})
+        assert response.status_code == 200
+        assert response.json()["status"] == "APPLIED"
+        assert connection.commits == 1 and connection.rollbacks == 0
+    finally:
+        app.dependency_overrides.pop(get_copy_service, None)
+
+
+@pytest.mark.parametrize("primary,category", [
+    (oracledb.DatabaseError(SimpleNamespace(code=20106, message="private Oracle detail")), "stale_preview"),
+    (ApiError(409, "synthetic_primary", "Synthetic primary error"), "synthetic_primary"),
+])
+def test_copy_primary_error_survives_all_cleanup_failures(primary, category, caplog):
+    connection = CleanupConnection(error=primary, **failing_cleanup())
+    with pytest.raises(ApiError) as caught:
+        PayorCopyService(lambda: connection).run(
+            CopyApplyRequest(**REQUEST, expected_state_hash="B" * 64), apply=True)
+    assert caught.value.category == category
+    assert "private" not in caught.value.message and "private" not in caplog.text
+    assert connection.commits == 0 and connection.rollbacks == 1
+    assert connection.events == ["cursor.close", "rollback", "connection.close"]
+
+
+def test_copy_cursor_cleanup_failure_before_commit_rolls_back():
+    connection = CleanupConnection({**RESPONSE, "status": "APPLIED"}, **failing_cleanup())
+    with pytest.raises(ApiError) as caught:
+        PayorCopyService(lambda: connection).run(
+            CopyApplyRequest(**REQUEST, expected_state_hash="B" * 64), apply=True)
+    assert caught.value.category == "application_failure"
+    assert connection.commits == 0 and connection.rollbacks == 1
+    assert connection.events == ["cursor.close", "rollback", "connection.close"]
+
+
+def test_copy_invalid_response_still_rolls_back_when_cleanup_also_fails():
+    connection = CleanupConnection({"status": "APPLIED"}, **failing_cleanup())
+    with pytest.raises(ApiError) as caught:
+        PayorCopyService(lambda: connection).run(
+            CopyApplyRequest(**REQUEST, expected_state_hash="B" * 64), apply=True)
+    assert caught.value.category == "application_failure"
+    assert connection.commits == 0 and connection.rollbacks == 1 and connection.closed
+
+
+def test_copy_serialization_failure_rolls_back_before_commit(monkeypatch):
+    def fail_serialization(self, *args, **kwargs):
+        raise ValueError("private serialization detail")
+
+    monkeypatch.setattr(CopyResponse, "model_dump_json", fail_serialization)
+    connection = CleanupConnection({**RESPONSE, "status": "APPLIED"})
+    with pytest.raises(ApiError) as caught:
+        PayorCopyService(lambda: connection).run(
+            CopyApplyRequest(**REQUEST, expected_state_hash="B" * 64), apply=True)
+    assert caught.value.category == "application_failure"
+    assert connection.commits == 0 and connection.rollbacks == 1
+    assert connection.events == ["cursor.close", "rollback", "connection.close"]
+
+
+def test_copy_commit_failure_keeps_primary_database_error_when_cleanup_also_fails():
+    connection = CleanupConnection({**RESPONSE, "status": "APPLIED"},
+        commit_error=oracledb.DatabaseError(SimpleNamespace(code=3113, message="private commit detail")),
+        **failing_cleanup(cursor_error=None))
+    with pytest.raises(ApiError) as caught:
+        PayorCopyService(lambda: connection).run(
+            CopyApplyRequest(**REQUEST, expected_state_hash="B" * 64), apply=True)
+    assert caught.value.category == "database_failure"
+    assert connection.commits == 0 and connection.rollbacks == 1
+    assert connection.events == ["cursor.close", "commit", "rollback", "connection.close"]
+
+
+@pytest.mark.parametrize("operation", ["preview", "destinations"])
+def test_read_only_copy_results_survive_cleanup_failures(operation):
+    connection = CleanupConnection(**failing_cleanup())
+    service = PayorCopyService(lambda: connection)
+    if operation == "preview":
+        result = service.run(CopyPreviewRequest(**REQUEST))
+        assert result.status == "READY"
+    else:
+        result = service.destinations(CopyDestinationRequest(source_payor_guid="SYN-SOURCE", audit_user="SYN-USER"))
+        assert [item.payor_guid for item in result.destinations] == ["SYN-DESTINATION"]
+    assert connection.commits == 0 and connection.rollbacks == 1
+    assert connection.events == ["cursor.close", "rollback", "connection.close"]
+
+
+@pytest.mark.parametrize("primary,category", [
+    (oracledb.DatabaseError(SimpleNamespace(code=3113, message="private Oracle detail")), "database_failure"),
+    (ApiError(409, "synthetic_primary", "Synthetic primary error"), "synthetic_primary"),
+])
+def test_destination_primary_error_survives_all_cleanup_failures(primary, category):
+    connection = CleanupConnection(error=primary, **failing_cleanup())
+    with pytest.raises(ApiError) as caught:
+        PayorCopyService(lambda: connection).destinations(CopyDestinationRequest(
+            source_payor_guid="SYN-SOURCE", audit_user="SYN-USER"))
+    assert caught.value.category == category
+    assert connection.commits == 0 and connection.rollbacks == 1
+    assert connection.events == ["cursor.close", "rollback", "connection.close"]

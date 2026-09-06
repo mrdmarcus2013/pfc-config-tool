@@ -1603,11 +1603,14 @@ IS
     END verify_canonical_state;
 
 BEGIN
-    l_mode := UPPER(TRIM(p_mode));
-    IF l_mode NOT IN (c_mode_preview, c_mode_apply) THEN
+    -- Reject blank and oversized invalid inputs before assigning the bounded
+    -- mode variable or resolving any configuration state.
+    IF TRIM(p_mode) IS NULL
+       OR UPPER(TRIM(p_mode)) NOT IN (c_mode_preview, c_mode_apply) THEN
         RAISE_APPLICATION_ERROR(c_err_invalid_mode,
             'Mode must be PREVIEW or APPLY.');
     END IF;
+    l_mode := UPPER(TRIM(p_mode));
     l_audit_user := TRIM(p_audit_user);
     IF l_audit_user IS NULL OR LENGTH(l_audit_user) > 36 THEN
         RAISE_APPLICATION_ERROR(c_err_missing_audit_user,

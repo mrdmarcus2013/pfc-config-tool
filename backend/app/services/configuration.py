@@ -9,9 +9,18 @@ from contextlib import contextmanager
 from typing import Any
 
 import oracledb
+from pydantic import BaseModel
 
 from backend.app.database import DatabaseConfigurationError, create_connection
 from backend.app.errors import ApiError, translate_oracle_error
+from backend.app.models import (
+    ConfigurationResponse,
+    LineOfBusinessChangeResponse,
+    LineOfBusinessCurrentResponse,
+    LineOfBusinessSaveResponse,
+    RemarksChangeResponse,
+    ValueCodesChangeResponse,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -280,6 +289,11 @@ def _technical_changes(changes: list[dict[str, Any]]) -> list[dict[str, Any]]:
         }
         for change in changes
     ]
+
+
+def _validate_response(response: dict[str, Any], model: type[BaseModel]) -> None:
+    """Check the public contract and JSON encoding while rollback is still possible."""
+    model.model_validate(response).model_dump_json()
 
 
 def _safe_summary(status: str, change_count: int) -> str:
@@ -631,6 +645,7 @@ class ConfigurationService:
                 "summary": _safe_summary(status, change_count), "pfc_guid": row.get("pfc_guid"),
                 "debug_changes": _technical_changes(changes),
             }
+            _validate_response(response, ValueCodesChangeResponse)
             if mode == "APPLY": connection.commit()
             else: connection.rollback()
             return response
@@ -794,6 +809,7 @@ class ConfigurationService:
                 "pfc_guid": row.get("pfc_guid"),
                 "debug_changes": _technical_changes(changes),
             }
+            _validate_response(response, RemarksChangeResponse)
             if operation_mode == "APPLY":
                 connection.commit()
             else:
@@ -834,6 +850,8 @@ class ConfigurationService:
             if not valid or (status == "DEFINED" and lob is None) or (status == "SAVED" and lob is None):
                 raise ApiError(500, "application_failure", "The database returned an invalid Line of Business result.")
             response = {"status": status, "line_of_business": lob}
+            response_model = LineOfBusinessSaveResponse if commit else LineOfBusinessCurrentResponse
+            _validate_response(response, response_model)
             if commit:
                 connection.commit()
             else:
@@ -901,6 +919,7 @@ class ConfigurationService:
                     for target in targets
                 ],
             }
+            _validate_response(response, LineOfBusinessChangeResponse)
             if commit: connection.commit()
             else: connection.rollback()
             return response
@@ -1090,6 +1109,7 @@ class ConfigurationService:
                 )
 
             response = self._response(summary, changes)
+            _validate_response(response, ConfigurationResponse)
             if mode == "APPLY":
                 connection.commit()
             else:

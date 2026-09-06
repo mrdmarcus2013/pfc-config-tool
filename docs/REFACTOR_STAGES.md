@@ -120,8 +120,9 @@ it requires a local synthetic database and refuses to overwrite a baseline.
 ## Stage 4: measured performance work
 
 Completed locally on September 6, 2026, on `refactor/stage-4-performance`, based
-on the Stage 3 checkpoint. Stage 4 remains uncommitted. The optimized package is
-installed only in the local synthetic Oracle database.
+on the Stage 3 checkpoint. It was checkpointed locally as `32a025a` before the
+correctness fixes. The optimized package is installed only in the local
+synthetic Oracle database.
 
 Replace the two quadratic digest-array sorts in Copy with one private stable
 merge sort. Both callers construct dense arrays of non-null SHA-256 strings.
@@ -212,14 +213,59 @@ Copy regression tests additionally cover zero/single/duplicate child rows,
 insertion-order independence, removing one duplicate, stale-hash rejection, and
 rebuilding the exact child multiset.
 
-## Separate correctness work
+## Correctness pass: Oracle validation and save results
 
-The analysis identified issues whose fixes change behavior and therefore need
-separate changes and regression tests:
+Completed locally on September 6, 2026, on `fix/config-validation-save-results`,
+after the Stage 4 checkpoint. The fixes remain uncommitted. These intentional
+corrections remain separate from the behavior-preserving refactor commits.
 
-- Null/blank direct Oracle operation modes and whitespace-only procedure names.
+- Reject null, blank, unknown, and overlong invalid Oracle operation modes with
+  the existing invalid-mode error before resolution or mutation. Valid modes
+  retain case/space normalization and existing expected-hash checks.
+- Treat a space-only procedure name like NULL when enforcing HER mandatory
+  safety. Preserve RETURN_1, complete source/unmanaged HEF content, and Default's
+  refusal to inherit unsafe records.
+- Validate ordinary save responses with their existing public models and JSON
+  serialization before commit. This covers generic options, Value Codes,
+  Remarks, initial Line of Business saves, and Line of Business changes.
+- Preserve Copy's successful response after a confirmed commit if connection
+  cleanup fails. Cleanup also preserves the original operation error on failure.
+  A Copy cursor-close failure before commit still prevents saving. Read-only
+  Copy results survive cleanup errors without changing eligibility rules.
+
+The old implementation reproduced 18 failures among 37 new rollback-only Oracle
+tests, nine ordinary-response failures, and Copy cleanup/serialization failures.
+All 37 Oracle regressions pass with the local upgrade; the normal 745 read/preview
+and 35 Apply behavior comparisons still match, including complete stored rows,
+hashes, and audit rules. Synthetic test changes and plan ownership are restored.
+
+Final verification passed 377 Python tests (39 optional integration tests
+skipped), including 20 ordinary-response and 12 Copy failure-injection cases.
+Those cases include actual API responses for rejected malformed saves and
+successful saves with cleanup errors. After restarting the local backend, all
+14 captured API/schema responses matched, including Preview hashes and Copy
+eligibility. Oracle reported no compilation errors and installed sources match
+the installer output. Persisted configuration remains unchanged. Independent
+review confirmed the preflight serialization matches the installed API stack.
+
+The targeted local installer previews by default and replaces only two existing
+PL/SQL objects, without changing schema tables or stored configuration:
+
+```powershell
+.venv/Scripts/python.exe database/run_poc.py install_validation
+.venv/Scripts/python.exe database/run_poc.py install_validation --confirm-validation
+$env:RUN_ORACLE_VALIDATION='1'
+.venv/Scripts/python.exe -m pytest database/tests/test_configuration_validation.py -q
+```
+
+This pass addresses failures after a confirmed commit and validation that can
+run before commit. A lost commit acknowledgement or lost HTTP response can still
+leave the save outcome uncertain; this pass does not add reconciliation or
+automatic retries.
+
+## Remaining correctness work
+
 - Late Line of Business save callbacks after a payor switch.
-- Cleanup or response validation failures after database commits.
 - Invalid copy sources reported as an empty destination list and hidden copy
   error reasons.
 - Consistent keyboard/focus handling across modal editors.

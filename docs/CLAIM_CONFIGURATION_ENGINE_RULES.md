@@ -20,6 +20,18 @@ Defined, User Template, Form Template, Billing Form. Default means zero override
 at the selected editing level. Plan Default preserves the null-plan payor parent.
 All counts, hashes, locks, deletes and verification must use exact editing scope.
 
+## Operation validation and save results
+
+The generic Preview/Apply procedure accepts only `PREVIEW` or `APPLY`, ignoring
+case and surrounding spaces. Null, blank, and unknown modes must be rejected
+before configuration resolution or mutation. Apply requires a nonblank expected
+hash and must reject a stale Preview before changing any records.
+
+Application adapters must validate the complete public response and its JSON
+serialization before committing a save. After a confirmed commit, connection
+cleanup errors must be logged without replacing the successful result. Cleanup
+failures while handling an operation error must not hide the original error.
+
 ## HER mandatory invariant
 
 If `HER.STO_PROC_NAME` is anything other than `RETURN_1`, including `NULL`,
@@ -29,6 +41,9 @@ configured procedure does not produce.
 
 `RETURN_1` does not imply `MANDATORY_IND = 'Y'`. For `RETURN_1`, the applicable
 source-derived value is preserved unless another approved rule governs it.
+
+Procedure names are compared without case or surrounding spaces. A name
+containing only spaces follows the same mandatory-indicator rule as `NULL`.
 
 A HER is safe when its stored procedure is `RETURN_1` or its mandatory
 indicator is `N`. Null comparisons must fail safely.

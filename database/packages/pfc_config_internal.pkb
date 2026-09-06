@@ -35,7 +35,7 @@ CREATE OR REPLACE PACKAGE BODY pfc_config_internal AS
     IS
     BEGIN
         IF UPPER(TRIM(p_her.sto_proc_name)) <> 'RETURN_1'
-           OR p_her.sto_proc_name IS NULL THEN
+           OR TRIM(p_her.sto_proc_name) IS NULL THEN
             p_her.mandatory_ind := 'N';
         END IF;
     END apply_her_safety_invariants;
