@@ -43,35 +43,7 @@ IS
     )
     IS
         l_results SYS_REFCURSOR;
-        l_row_pfc_guid pfc.pfc_guid%TYPE;
-        l_row_payor_guid pfc.payor_guid%TYPE;
-        l_row_plan_guid pfc.plan_guid%TYPE;
-        l_row_payor_type_guid payors.payor_type_guid%TYPE;
-        l_row_billing_form_code pfc.billing_form_code%TYPE;
-        l_row_form_template_guid pfc.form_template_guid%TYPE;
-        l_row_user_template_guid pfc.user_form_template_guid%TYPE;
-        l_row_cpd_start_date pfc.cpd_start_date%TYPE;
-        l_row_cpd_end_date pfc.cpd_end_date%TYPE;
-        l_payor_specific_exists VARCHAR2(1);
-        l_her_scope_code VARCHAR2(20);
-        l_is_clone_source VARCHAR2(1);
-        l_clone_template_rank PLS_INTEGER;
-        l_clone_payor_type_rank PLS_INTEGER;
-        l_electronic_rec_guid hcfa_electronic_records.electronic_rec_guid%TYPE;
-        l_row_record_type_code hcfa_electronic_records.record_type_code%TYPE;
-        l_record_name hcfa_electronic_records.record_name%TYPE;
-        l_her_payor_guid hcfa_electronic_records.payor_guid%TYPE;
-        l_her_payor_type_guid hcfa_electronic_records.payor_type_guid%TYPE;
-        l_her_form_template_guid hcfa_electronic_records.form_template_guid%TYPE;
-        l_her_user_template_guid hcfa_electronic_records.user_form_template_guid%TYPE;
-        l_her_sto_proc_name hcfa_electronic_records.sto_proc_name%TYPE;
-        l_field_number hcfa_electronic_fields.field_number%TYPE;
-        l_field_name hcfa_electronic_fields.field_name%TYPE;
-        l_hef_sto_proc_name hcfa_electronic_fields.sto_proc_name%TYPE;
-        l_hef_hard_coded_data hcfa_electronic_fields.hard_coded_data%TYPE;
-        l_position_from hcfa_electronic_fields.position_from%TYPE;
-        l_position_thru hcfa_electronic_fields.position_thru%TYPE;
-        l_order_num hcfa_electronic_fields.order_num%TYPE;
+        l_row pfc_config_internal.t_resolved_her_hef_row;
         l_source_guid hcfa_electronic_records.electronic_rec_guid%TYPE;
         l_source_her_proc hcfa_electronic_records.sto_proc_name%TYPE;
         l_source_hef_proc hcfa_electronic_fields.sto_proc_name%TYPE;
@@ -93,64 +65,51 @@ IS
         );
 
         LOOP
-            FETCH l_results INTO
-                l_row_pfc_guid, l_row_payor_guid, l_row_plan_guid,
-                l_row_payor_type_guid, l_row_billing_form_code,
-                l_row_form_template_guid, l_row_user_template_guid,
-                l_row_cpd_start_date, l_row_cpd_end_date,
-                l_payor_specific_exists, l_her_scope_code,
-                l_is_clone_source, l_clone_template_rank,
-                l_clone_payor_type_rank, l_electronic_rec_guid,
-                l_row_record_type_code, l_record_name, l_her_payor_guid,
-                l_her_payor_type_guid, l_her_form_template_guid,
-                l_her_user_template_guid, l_her_sto_proc_name,
-                l_field_number, l_field_name, l_hef_sto_proc_name,
-                l_hef_hard_coded_data, l_position_from, l_position_thru,
-                l_order_num;
+            FETCH l_results INTO l_row;
             EXIT WHEN l_results%NOTFOUND;
             l_row_count := l_row_count + 1;
 
             IF p_effective.pfc_guid IS NULL THEN
-                p_effective.pfc_guid := l_row_pfc_guid;
-            ELSIF p_effective.pfc_guid <> l_row_pfc_guid THEN
+                p_effective.pfc_guid := l_row.pfc_guid;
+            ELSIF p_effective.pfc_guid <> l_row.pfc_guid THEN
                 RAISE_APPLICATION_ERROR(
                     c_err_current_unsupported,
                     'Current-state rows resolved to inconsistent PFC contexts.'
                 );
             END IF;
 
-            IF l_is_clone_source = 'Y' THEN
+            IF l_row.is_clone_source = 'Y' THEN
                 IF l_source_guid IS NULL THEN
-                    l_source_guid := l_electronic_rec_guid;
-                    l_source_her_proc := l_her_sto_proc_name;
-                ELSIF l_source_guid <> l_electronic_rec_guid THEN
+                    l_source_guid := l_row.electronic_rec_guid;
+                    l_source_her_proc := l_row.her_sto_proc_name;
+                ELSIF l_source_guid <> l_row.electronic_rec_guid THEN
                     RAISE_APPLICATION_ERROR(
                         c_err_current_unsupported,
                         'Current-state source rows are inconsistent.'
                     );
                 END IF;
                 IF p_managed_field_name IS NOT NULL
-                   AND l_field_name = p_managed_field_name THEN
+                   AND l_row.field_name = p_managed_field_name THEN
                     l_source_field_count := l_source_field_count + 1;
-                    l_source_hef_proc := l_hef_sto_proc_name;
-                    l_source_hard_code := l_hef_hard_coded_data;
+                    l_source_hef_proc := l_row.hef_sto_proc_name;
+                    l_source_hard_code := l_row.hef_hard_coded_data;
                 END IF;
             END IF;
 
-            IF l_her_scope_code = 'PAYOR_SPECIFIC' THEN
+            IF l_row.her_scope_code = 'PAYOR_SPECIFIC' THEN
                 IF l_payor_guid IS NULL THEN
-                    l_payor_guid := l_electronic_rec_guid;
+                    l_payor_guid := l_row.electronic_rec_guid;
                     l_payor_count := 1;
-                    l_payor_her_proc := l_her_sto_proc_name;
-                ELSIF l_payor_guid <> l_electronic_rec_guid THEN
+                    l_payor_her_proc := l_row.her_sto_proc_name;
+                ELSIF l_payor_guid <> l_row.electronic_rec_guid THEN
                     l_payor_count := l_payor_count + 1;
-                    l_payor_guid := l_electronic_rec_guid;
+                    l_payor_guid := l_row.electronic_rec_guid;
                 END IF;
                 IF p_managed_field_name IS NOT NULL
-                   AND l_field_name = p_managed_field_name THEN
+                   AND l_row.field_name = p_managed_field_name THEN
                     l_payor_field_count := l_payor_field_count + 1;
-                    l_payor_hef_proc := l_hef_sto_proc_name;
-                    l_payor_hard_code := l_hef_hard_coded_data;
+                    l_payor_hef_proc := l_row.hef_sto_proc_name;
+                    l_payor_hard_code := l_row.hef_hard_coded_data;
                 END IF;
             END IF;
         END LOOP;

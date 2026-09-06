@@ -246,145 +246,133 @@ CREATE OR REPLACE PACKAGE BODY pfc_copy AS
                 FOR i IN 1..l_parts.COUNT LOOP feed(l_hash,l_parts(i)); END LOOP;
             END IF;
         END;
-    BEGIN
-        IF l_mode IS NULL OR l_mode NOT IN ('PREVIEW','APPLY') OR TRIM(p_audit_user) IS NULL THEN
-            RAISE_APPLICATION_ERROR(-20100,'A valid copy operation and audit identity are required.');
-        END IF;
-        IF p_source_payor=p_destination_payor THEN
-            RAISE_APPLICATION_ERROR(-20101,'Choose a different destination payor.');
-        END IF;
-        IF l_mode='APPLY' THEN
-            SAVEPOINT pfc_copy_start;
-            l_savepoint:=TRUE;
-            -- Coarse, brief locks protect generic/template reads and all destination contexts.
-            -- NOWAIT fails safely instead of holding a request behind another editor.
-            FOR p IN (SELECT payor_guid FROM payors WHERE payor_guid IN (p_source_payor,p_destination_payor)
-                      ORDER BY payor_guid FOR UPDATE NOWAIT) LOOP NULL; END LOOP;
-            LOCK TABLE pfc IN SHARE ROW EXCLUSIVE MODE NOWAIT;
-            LOCK TABLE pfc_config_plans IN SHARE ROW EXCLUSIVE MODE NOWAIT;
-            LOCK TABLE pfc_config_payor_context IN SHARE ROW EXCLUSIVE MODE NOWAIT;
-            LOCK TABLE hcfa_electronic_records IN SHARE ROW EXCLUSIVE MODE NOWAIT;
-            LOCK TABLE hcfa_electronic_fields IN SHARE ROW EXCLUSIVE MODE NOWAIT;
-        END IF;
-        resolve_copy_context(p_source_payor,p_source_plan,l_source);
-        SELECT CASE WHEN l_source.form_template_guid IS NULL THEN 'None' ELSE
-            NVL((SELECT MAX(template_name) FROM pfc_config_form_templates WHERE form_template_guid=l_source.form_template_guid),'Assigned form template') END,
-            CASE WHEN l_source.user_form_template_guid IS NULL THEN 'None' ELSE
-            NVL((SELECT MAX(template_name) FROM pfc_config_user_templates WHERE user_form_template_guid=l_source.user_form_template_guid),'Assigned user template') END
-        INTO l_form_name,l_user_name FROM dual;
-        pfc_line_of_business.require_defined(p_source_payor);
-        pfc_line_of_business.require_defined(p_destination_payor);
-        SELECT line_of_business INTO l_source_lob FROM pfc_config_payor_context WHERE payor_guid=p_source_payor;
-        SELECT line_of_business INTO l_dest_lob FROM pfc_config_payor_context WHERE payor_guid=p_destination_payor;
-        IF l_source_lob<>l_dest_lob THEN RAISE_APPLICATION_ERROR(-20102,'Source and destination Line of Business must match.'); END IF;
 
-        FOR context_row IN (
-            SELECT CAST(NULL AS VARCHAR2(36)) plan_guid FROM dual
-            UNION SELECT plan_guid FROM pfc WHERE payor_guid=p_destination_payor
-              AND cpd_end_date>SYSDATE AND default_media_type='E' AND type_of_bill IS NULL
-            UNION SELECT plan_guid FROM hcfa_electronic_records WHERE payor_guid=p_destination_payor
-              AND plan_guid IS NOT NULL
-            ORDER BY plan_guid NULLS FIRST
-        ) LOOP
-            l_count:=l_contexts.COUNT+1;
-            resolve_copy_context(p_destination_payor,context_row.plan_guid,l_contexts(l_count));
-            -- Also inspect eligible PFC candidates without the customization resolver's billing filter.
-            FOR winner IN (SELECT billing_form_code,rec_ent_date FROM pfc
-                WHERE payor_guid=p_destination_payor
-                  AND (plan_guid=context_row.plan_guid OR (plan_guid IS NULL AND context_row.plan_guid IS NULL))
+        PROCEDURE prepare_copy_contexts IS
+        BEGIN
+            resolve_copy_context(p_source_payor,p_source_plan,l_source);
+            SELECT CASE WHEN l_source.form_template_guid IS NULL THEN 'None' ELSE
+                NVL((SELECT MAX(template_name) FROM pfc_config_form_templates WHERE form_template_guid=l_source.form_template_guid),'Assigned form template') END,
+                CASE WHEN l_source.user_form_template_guid IS NULL THEN 'None' ELSE
+                NVL((SELECT MAX(template_name) FROM pfc_config_user_templates WHERE user_form_template_guid=l_source.user_form_template_guid),'Assigned user template') END
+            INTO l_form_name,l_user_name FROM dual;
+            pfc_line_of_business.require_defined(p_source_payor);
+            pfc_line_of_business.require_defined(p_destination_payor);
+            SELECT line_of_business INTO l_source_lob FROM pfc_config_payor_context WHERE payor_guid=p_source_payor;
+            SELECT line_of_business INTO l_dest_lob FROM pfc_config_payor_context WHERE payor_guid=p_destination_payor;
+            IF l_source_lob<>l_dest_lob THEN RAISE_APPLICATION_ERROR(-20102,'Source and destination Line of Business must match.'); END IF;
+
+            FOR context_row IN (
+                SELECT CAST(NULL AS VARCHAR2(36)) plan_guid FROM dual
+                UNION SELECT plan_guid FROM pfc WHERE payor_guid=p_destination_payor
                   AND cpd_end_date>SYSDATE AND default_media_type='E' AND type_of_bill IS NULL
-                ORDER BY rec_ent_date DESC NULLS FIRST FETCH FIRST 1 ROW ONLY) LOOP
-                IF winner.billing_form_code<>l_source.billing_form_code THEN
+                UNION SELECT plan_guid FROM hcfa_electronic_records WHERE payor_guid=p_destination_payor
+                  AND plan_guid IS NOT NULL
+                ORDER BY plan_guid NULLS FIRST
+            ) LOOP
+                l_count:=l_contexts.COUNT+1;
+                resolve_copy_context(p_destination_payor,context_row.plan_guid,l_contexts(l_count));
+                -- Also inspect eligible PFC candidates without the customization resolver's billing filter.
+                FOR winner IN (SELECT billing_form_code,rec_ent_date FROM pfc
+                    WHERE payor_guid=p_destination_payor
+                      AND (plan_guid=context_row.plan_guid OR (plan_guid IS NULL AND context_row.plan_guid IS NULL))
+                      AND cpd_end_date>SYSDATE AND default_media_type='E' AND type_of_bill IS NULL
+                    ORDER BY rec_ent_date DESC NULLS FIRST FETCH FIRST 1 ROW ONLY) LOOP
+                    IF winner.billing_form_code<>l_source.billing_form_code THEN
+                        RAISE_APPLICATION_ERROR(-20103,'Every destination billing form must match the source.');
+                    END IF;
+                END LOOP;
+                IF l_contexts(l_count).billing_form_code<>l_source.billing_form_code THEN
                     RAISE_APPLICATION_ERROR(-20103,'Every destination billing form must match the source.');
                 END IF;
-            END LOOP;
-            IF l_contexts(l_count).billing_form_code<>l_source.billing_form_code THEN
-                RAISE_APPLICATION_ERROR(-20103,'Every destination billing form must match the source.');
-            END IF;
-            l_item:=JSON_OBJECT_T(); l_item.put('pfc_guid',l_contexts(l_count).pfc_guid);
-            l_item.put('plan_guid',context_row.plan_guid);
-            l_entry_name:='Payor-level settings';
-            IF context_row.plan_guid IS NOT NULL THEN
-                SELECT NVL(plan_name,'Plan settings') INTO l_entry_name FROM pfc_config_plans WHERE plan_guid=context_row.plan_guid;
-            END IF;
-            l_item.put('label',l_entry_name);
-            SELECT CASE WHEN l_contexts(l_count).form_template_guid IS NULL THEN 'None' ELSE
-                NVL((SELECT MAX(template_name) FROM pfc_config_form_templates WHERE form_template_guid=l_contexts(l_count).form_template_guid),'Assigned form template') END,
-                CASE WHEN l_contexts(l_count).user_form_template_guid IS NULL THEN 'None' ELSE
-                NVL((SELECT MAX(template_name) FROM pfc_config_user_templates WHERE user_form_template_guid=l_contexts(l_count).user_form_template_guid),'Assigned user template') END
-            INTO l_old_form_name,l_old_user_name FROM dual;
-            l_item.put('form_template_before',l_old_form_name); l_item.put('user_template_before',l_old_user_name);
-            IF NVL(l_contexts(l_count).form_template_guid,'#')<>NVL(l_source.form_template_guid,'#')
-                OR NVL(l_contexts(l_count).user_form_template_guid,'#')<>NVL(l_source.user_form_template_guid,'#') THEN
-                l_template_updates:=l_template_updates+1; l_item.put('templates_changed',TRUE);
-            ELSE l_item.put('templates_changed',FALSE);
-            END IF;
-            l_context_json.append(l_item);
-        END LOOP;
-
-        SELECT COUNT(*) INTO l_count FROM hcfa_electronic_records
-        WHERE (payor_guid=p_destination_payor AND (type_of_bill IS NOT NULL OR billing_form_code<>l_source.billing_form_code))
-           OR (payor_guid=p_source_payor AND billing_form_code=l_source.billing_form_code AND type_of_bill IS NOT NULL
-               AND (plan_guid IS NULL OR plan_guid=p_source_plan));
-        IF l_count>0 THEN RAISE_APPLICATION_ERROR(-20104,'Unsupported billing-form or bill-type records require review before copying.'); END IF;
-
-        -- Build the combined applicable override set. Plan wins as a complete HER/HEF unit.
-        FOR record_row IN (SELECT DISTINCT record_type_code FROM hcfa_electronic_records
-            WHERE payor_guid=p_source_payor AND billing_form_code=l_source.billing_form_code
-              AND (plan_guid IS NULL OR plan_guid=p_source_plan) ORDER BY record_type_code) LOOP
-            l_guid:=effective(l_source,record_row.record_type_code);
-            IF l_guid IS NOT NULL THEN
-                SELECT * INTO l_her FROM hcfa_electronic_records WHERE electronic_rec_guid=l_guid;
-                IF l_her.payor_guid=p_source_payor THEN l_desired(record_row.record_type_code):=l_guid; END IF;
-            END IF;
-        END LOOP;
-        assert_effective(FALSE);
-
-        -- Keep exactly one canonical matching destination row; remove duplicates/stale/extras.
-        FOR h IN (SELECT * FROM hcfa_electronic_records WHERE payor_guid=p_destination_payor ORDER BY electronic_rec_guid) LOOP
-            IF h.plan_guid IS NULL AND l_desired.EXISTS(h.record_type_code) AND NOT l_kept.EXISTS(h.record_type_code)
-              AND signature(h.electronic_rec_guid)=signature(l_desired(h.record_type_code),FALSE,p_destination_payor,l_contexts(1).payor_type_guid) THEN
-                l_kept(h.record_type_code):=h.electronic_rec_guid; l_keep:=l_keep+1;
-                add_change(h.record_name,'KEEP','Payor',h.record_type_code);
-            ELSE
-                l_remove:=l_remove+1;
-                IF h.plan_guid IS NOT NULL THEN l_plan_remove:=l_plan_remove+1; END IF;
-                SELECT COUNT(*) INTO l_count FROM hcfa_electronic_fields WHERE electronic_rec_guid=h.electronic_rec_guid;
-                l_hef_remove:=l_hef_remove+l_count;
-                add_change(h.record_name,'REMOVE',CASE WHEN h.plan_guid IS NULL THEN 'Payor' ELSE 'Plan' END,h.record_type_code);
-            END IF;
-        END LOOP;
-        l_key:=l_desired.FIRST;
-        WHILE l_key IS NOT NULL LOOP
-            IF NOT l_kept.EXISTS(l_key) THEN
-                l_add:=l_add+1;
-                SELECT * INTO l_her FROM hcfa_electronic_records WHERE electronic_rec_guid=l_desired(l_key);
-                IF (NVL(UPPER(TRIM(l_her.sto_proc_name)),'#')<>'RETURN_1' AND NVL(l_her.mandatory_ind,'#')<>'N')
-                  OR l_her.carry_forward_ind IS NOT NULL OR NVL(l_her.include_record_data_onclaim,'#')<>'Y' THEN
-                    l_normalized:=l_normalized+1;
+                l_item:=JSON_OBJECT_T(); l_item.put('pfc_guid',l_contexts(l_count).pfc_guid);
+                l_item.put('plan_guid',context_row.plan_guid);
+                l_entry_name:='Payor-level settings';
+                IF context_row.plan_guid IS NOT NULL THEN
+                    SELECT NVL(plan_name,'Plan settings') INTO l_entry_name FROM pfc_config_plans WHERE plan_guid=context_row.plan_guid;
                 END IF;
-                SELECT COUNT(*) INTO l_count FROM hcfa_electronic_fields WHERE electronic_rec_guid=l_desired(l_key);
-                l_hef_add:=l_hef_add+l_count;
-                add_change(l_her.record_name,'COPY',CASE WHEN l_her.plan_guid IS NULL THEN 'Source payor' ELSE 'Source plan' END,l_key);
-            END IF;
-            l_key:=l_desired.NEXT(l_key);
-        END LOOP;
+                l_item.put('label',l_entry_name);
+                SELECT CASE WHEN l_contexts(l_count).form_template_guid IS NULL THEN 'None' ELSE
+                    NVL((SELECT MAX(template_name) FROM pfc_config_form_templates WHERE form_template_guid=l_contexts(l_count).form_template_guid),'Assigned form template') END,
+                    CASE WHEN l_contexts(l_count).user_form_template_guid IS NULL THEN 'None' ELSE
+                    NVL((SELECT MAX(template_name) FROM pfc_config_user_templates WHERE user_form_template_guid=l_contexts(l_count).user_form_template_guid),'Assigned user template') END
+                INTO l_old_form_name,l_old_user_name FROM dual;
+                l_item.put('form_template_before',l_old_form_name); l_item.put('user_template_before',l_old_user_name);
+                IF NVL(l_contexts(l_count).form_template_guid,'#')<>NVL(l_source.form_template_guid,'#')
+                    OR NVL(l_contexts(l_count).user_form_template_guid,'#')<>NVL(l_source.user_form_template_guid,'#') THEN
+                    l_template_updates:=l_template_updates+1; l_item.put('templates_changed',TRUE);
+                ELSE l_item.put('templates_changed',FALSE);
+                END IF;
+                l_context_json.append(l_item);
+            END LOOP;
 
-        feed(l_hash,p_source_payor); feed(l_hash,p_source_plan); feed(l_hash,p_destination_payor);
-        hash_rows('SELECT JSON_OBJECT(p.* RETURNING VARCHAR2(32767)) FROM payors p WHERE payor_guid IN (:s,:d)');
-        hash_rows('SELECT JSON_OBJECT(p.* RETURNING VARCHAR2(32767)) FROM pfc p WHERE payor_guid IN (:s,:d)');
-        hash_rows('SELECT JSON_OBJECT(p.* RETURNING VARCHAR2(32767)) FROM pfc_config_plans p WHERE payor_guid IN (:s,:d)');
-        hash_rows('SELECT JSON_OBJECT(p.* RETURNING VARCHAR2(32767)) FROM pfc_config_payor_context p WHERE payor_guid IN (:s,:d)');
-        hash_rows('SELECT JSON_OBJECT(h.* RETURNING VARCHAR2(32767)) FROM hcfa_electronic_records h WHERE payor_guid IS NULL OR payor_guid IN (:s,:d)');
-        hash_rows('SELECT JSON_OBJECT(f.* RETURNING VARCHAR2(32767)) FROM hcfa_electronic_fields f WHERE electronic_rec_guid IN (SELECT electronic_rec_guid FROM hcfa_electronic_records WHERE payor_guid IS NULL OR payor_guid IN (:s,:d))');
-        -- Include resolution outcomes, since eligibility can change with time alone.
-        feed(l_hash,l_source.pfc_guid);
-        FOR i IN 1..l_contexts.COUNT LOOP feed(l_hash,l_contexts(i).pfc_guid); END LOOP;
+            SELECT COUNT(*) INTO l_count FROM hcfa_electronic_records
+            WHERE (payor_guid=p_destination_payor AND (type_of_bill IS NOT NULL OR billing_form_code<>l_source.billing_form_code))
+               OR (payor_guid=p_source_payor AND billing_form_code=l_source.billing_form_code AND type_of_bill IS NOT NULL
+                   AND (plan_guid IS NULL OR plan_guid=p_source_plan));
+            IF l_count>0 THEN RAISE_APPLICATION_ERROR(-20104,'Unsupported billing-form or bill-type records require review before copying.'); END IF;
+        END prepare_copy_contexts;
 
-        IF l_mode='APPLY' THEN
-            IF p_expected_hash IS NULL OR p_expected_hash<>l_hash THEN
-                RAISE_APPLICATION_ERROR(-20106,'The copy preview is stale. Run Preview again.');
-            END IF;
+        PROCEDURE plan_destination_settings IS
+        BEGIN
+            -- Build the combined applicable override set. Plan wins as a complete HER/HEF unit.
+            FOR record_row IN (SELECT DISTINCT record_type_code FROM hcfa_electronic_records
+                WHERE payor_guid=p_source_payor AND billing_form_code=l_source.billing_form_code
+                  AND (plan_guid IS NULL OR plan_guid=p_source_plan) ORDER BY record_type_code) LOOP
+                l_guid:=effective(l_source,record_row.record_type_code);
+                IF l_guid IS NOT NULL THEN
+                    SELECT * INTO l_her FROM hcfa_electronic_records WHERE electronic_rec_guid=l_guid;
+                    IF l_her.payor_guid=p_source_payor THEN l_desired(record_row.record_type_code):=l_guid; END IF;
+                END IF;
+            END LOOP;
+            assert_effective(FALSE);
+
+            -- Keep exactly one canonical matching destination row; remove duplicates/stale/extras.
+            FOR h IN (SELECT * FROM hcfa_electronic_records WHERE payor_guid=p_destination_payor ORDER BY electronic_rec_guid) LOOP
+                IF h.plan_guid IS NULL AND l_desired.EXISTS(h.record_type_code) AND NOT l_kept.EXISTS(h.record_type_code)
+                  AND signature(h.electronic_rec_guid)=signature(l_desired(h.record_type_code),FALSE,p_destination_payor,l_contexts(1).payor_type_guid) THEN
+                    l_kept(h.record_type_code):=h.electronic_rec_guid; l_keep:=l_keep+1;
+                    add_change(h.record_name,'KEEP','Payor',h.record_type_code);
+                ELSE
+                    l_remove:=l_remove+1;
+                    IF h.plan_guid IS NOT NULL THEN l_plan_remove:=l_plan_remove+1; END IF;
+                    SELECT COUNT(*) INTO l_count FROM hcfa_electronic_fields WHERE electronic_rec_guid=h.electronic_rec_guid;
+                    l_hef_remove:=l_hef_remove+l_count;
+                    add_change(h.record_name,'REMOVE',CASE WHEN h.plan_guid IS NULL THEN 'Payor' ELSE 'Plan' END,h.record_type_code);
+                END IF;
+            END LOOP;
+            l_key:=l_desired.FIRST;
+            WHILE l_key IS NOT NULL LOOP
+                IF NOT l_kept.EXISTS(l_key) THEN
+                    l_add:=l_add+1;
+                    SELECT * INTO l_her FROM hcfa_electronic_records WHERE electronic_rec_guid=l_desired(l_key);
+                    IF (NVL(UPPER(TRIM(l_her.sto_proc_name)),'#')<>'RETURN_1' AND NVL(l_her.mandatory_ind,'#')<>'N')
+                      OR l_her.carry_forward_ind IS NOT NULL OR NVL(l_her.include_record_data_onclaim,'#')<>'Y' THEN
+                        l_normalized:=l_normalized+1;
+                    END IF;
+                    SELECT COUNT(*) INTO l_count FROM hcfa_electronic_fields WHERE electronic_rec_guid=l_desired(l_key);
+                    l_hef_add:=l_hef_add+l_count;
+                    add_change(l_her.record_name,'COPY',CASE WHEN l_her.plan_guid IS NULL THEN 'Source payor' ELSE 'Source plan' END,l_key);
+                END IF;
+                l_key:=l_desired.NEXT(l_key);
+            END LOOP;
+        END plan_destination_settings;
+
+        PROCEDURE hash_copy_state IS
+        BEGIN
+            feed(l_hash,p_source_payor); feed(l_hash,p_source_plan); feed(l_hash,p_destination_payor);
+            hash_rows('SELECT JSON_OBJECT(p.* RETURNING VARCHAR2(32767)) FROM payors p WHERE payor_guid IN (:s,:d)');
+            hash_rows('SELECT JSON_OBJECT(p.* RETURNING VARCHAR2(32767)) FROM pfc p WHERE payor_guid IN (:s,:d)');
+            hash_rows('SELECT JSON_OBJECT(p.* RETURNING VARCHAR2(32767)) FROM pfc_config_plans p WHERE payor_guid IN (:s,:d)');
+            hash_rows('SELECT JSON_OBJECT(p.* RETURNING VARCHAR2(32767)) FROM pfc_config_payor_context p WHERE payor_guid IN (:s,:d)');
+            hash_rows('SELECT JSON_OBJECT(h.* RETURNING VARCHAR2(32767)) FROM hcfa_electronic_records h WHERE payor_guid IS NULL OR payor_guid IN (:s,:d)');
+            hash_rows('SELECT JSON_OBJECT(f.* RETURNING VARCHAR2(32767)) FROM hcfa_electronic_fields f WHERE electronic_rec_guid IN (SELECT electronic_rec_guid FROM hcfa_electronic_records WHERE payor_guid IS NULL OR payor_guid IN (:s,:d))');
+            -- Include resolution outcomes, since eligibility can change with time alone.
+            feed(l_hash,l_source.pfc_guid);
+            FOR i IN 1..l_contexts.COUNT LOOP feed(l_hash,l_contexts(i).pfc_guid); END LOOP;
+        END hash_copy_state;
+
+        PROCEDURE apply_destination_changes IS
+        BEGIN
             FOR h IN (SELECT electronic_rec_guid,record_type_code FROM hcfa_electronic_records WHERE payor_guid=p_destination_payor) LOOP
                 IF NOT l_kept.EXISTS(h.record_type_code) OR l_kept(h.record_type_code)<>h.electronic_rec_guid THEN
                     DELETE FROM hcfa_electronic_fields WHERE electronic_rec_guid=h.electronic_rec_guid;
@@ -422,6 +410,10 @@ CREATE OR REPLACE PACKAGE BODY pfc_copy AS
                 END IF;
                 l_key:=l_desired.NEXT(l_key);
             END LOOP;
+        END apply_destination_changes;
+
+        PROCEDURE verify_destination_changes IS
+        BEGIN
             SELECT COUNT(*) INTO l_count FROM hcfa_electronic_records WHERE payor_guid=p_destination_payor;
             IF l_count<>l_desired.COUNT THEN RAISE_APPLICATION_ERROR(-20107,'Copy verification failed.'); END IF;
             l_key:=l_desired.FIRST;
@@ -446,19 +438,56 @@ CREATE OR REPLACE PACKAGE BODY pfc_copy AS
             WHERE payor_guid=p_destination_payor AND cpd_end_date>SYSDATE
               AND default_media_type='E' AND type_of_bill IS NULL;
             IF l_count<>l_contexts.COUNT THEN RAISE_APPLICATION_ERROR(-20107,'Destination context verification failed.'); END IF;
+        END verify_destination_changes;
+
+        PROCEDURE build_copy_result IS
+        BEGIN
+            l_json.put('status',CASE WHEN l_mode='APPLY' THEN 'APPLIED'
+                WHEN l_add+l_remove+l_template_updates=0 THEN 'NO_CHANGE' ELSE 'READY' END);
+            l_json.put('state_hash',l_hash); l_json.put('source_pfc_guid',l_source.pfc_guid);
+            l_json.put('billing_form_code',l_source.billing_form_code); l_json.put('line_of_business',l_source_lob);
+            l_json.put('source_form_template',l_form_name); l_json.put('source_user_template',l_user_name);
+            l_json.put('records_copied',l_add); l_json.put('records_kept',l_keep);
+            l_json.put('records_removed',l_remove); l_json.put('plan_records_removed',l_plan_remove);
+            l_json.put('fields_copied',l_hef_add); l_json.put('fields_removed',l_hef_remove);
+            l_json.put('records_normalized',l_normalized);
+            l_json.put('template_contexts_updated',l_template_updates);
+            l_json.put('contexts',l_context_json); l_json.put('changes',l_changes);
+            p_result:=l_json.to_clob();
+        END build_copy_result;
+
+    BEGIN
+        IF l_mode IS NULL OR l_mode NOT IN ('PREVIEW','APPLY') OR TRIM(p_audit_user) IS NULL THEN
+            RAISE_APPLICATION_ERROR(-20100,'A valid copy operation and audit identity are required.');
         END IF;
-        l_json.put('status',CASE WHEN l_mode='APPLY' THEN 'APPLIED'
-            WHEN l_add+l_remove+l_template_updates=0 THEN 'NO_CHANGE' ELSE 'READY' END);
-        l_json.put('state_hash',l_hash); l_json.put('source_pfc_guid',l_source.pfc_guid);
-        l_json.put('billing_form_code',l_source.billing_form_code); l_json.put('line_of_business',l_source_lob);
-        l_json.put('source_form_template',l_form_name); l_json.put('source_user_template',l_user_name);
-        l_json.put('records_copied',l_add); l_json.put('records_kept',l_keep);
-        l_json.put('records_removed',l_remove); l_json.put('plan_records_removed',l_plan_remove);
-        l_json.put('fields_copied',l_hef_add); l_json.put('fields_removed',l_hef_remove);
-        l_json.put('records_normalized',l_normalized);
-        l_json.put('template_contexts_updated',l_template_updates);
-        l_json.put('contexts',l_context_json); l_json.put('changes',l_changes);
-        p_result:=l_json.to_clob();
+        IF p_source_payor=p_destination_payor THEN
+            RAISE_APPLICATION_ERROR(-20101,'Choose a different destination payor.');
+        END IF;
+        IF l_mode='APPLY' THEN
+            SAVEPOINT pfc_copy_start;
+            l_savepoint:=TRUE;
+            -- Coarse, brief locks protect generic/template reads and all destination contexts.
+            -- NOWAIT fails safely instead of holding a request behind another editor.
+            FOR p IN (SELECT payor_guid FROM payors WHERE payor_guid IN (p_source_payor,p_destination_payor)
+                      ORDER BY payor_guid FOR UPDATE NOWAIT) LOOP NULL; END LOOP;
+            LOCK TABLE pfc IN SHARE ROW EXCLUSIVE MODE NOWAIT;
+            LOCK TABLE pfc_config_plans IN SHARE ROW EXCLUSIVE MODE NOWAIT;
+            LOCK TABLE pfc_config_payor_context IN SHARE ROW EXCLUSIVE MODE NOWAIT;
+            LOCK TABLE hcfa_electronic_records IN SHARE ROW EXCLUSIVE MODE NOWAIT;
+            LOCK TABLE hcfa_electronic_fields IN SHARE ROW EXCLUSIVE MODE NOWAIT;
+        END IF;
+        prepare_copy_contexts;
+        plan_destination_settings;
+        hash_copy_state;
+
+        IF l_mode='APPLY' THEN
+            IF p_expected_hash IS NULL OR p_expected_hash<>l_hash THEN
+                RAISE_APPLICATION_ERROR(-20106,'The copy preview is stale. Run Preview again.');
+            END IF;
+            apply_destination_changes;
+            verify_destination_changes;
+        END IF;
+        build_copy_result;
     EXCEPTION WHEN OTHERS THEN
         IF l_savepoint THEN ROLLBACK TO pfc_copy_start; END IF;
         RAISE;

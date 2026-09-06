@@ -13,6 +13,11 @@ CREATE OR REPLACE PACKAGE pfc_line_of_business AUTHID DEFINER AS
         p_lock       IN VARCHAR2 DEFAULT 'N'
     );
 
+    FUNCTION get_defined_lob (
+        p_payor_guid IN payors.payor_guid%TYPE,
+        p_lock       IN VARCHAR2 DEFAULT 'N'
+    ) RETURN pfc_config_payor_context.line_of_business%TYPE;
+
     PROCEDURE get_current (
         p_payor_guid IN payors.payor_guid%TYPE,
         p_result     OUT SYS_REFCURSOR

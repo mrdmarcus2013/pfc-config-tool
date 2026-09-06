@@ -34,7 +34,7 @@ ownership registry. `App.tsx` decreased from 874 to 301 lines.
 ## Stage 2: editor and backend workflow plumbing
 
 Completed locally on September 6, 2026, on `refactor/stage-2-workflows`, based on
-the Stage 1 checkpoint. Stage 2 remains uncommitted.
+the Stage 1 checkpoint. It was checkpointed locally as `49d1fd9` before Stage 3.
 
 Add asynchronous transition and transaction failure tests before extracting
 shared lifecycle helpers. Preserve each editor's existing stale-preview policy,
@@ -71,10 +71,51 @@ introduced.
 
 ## Stage 3: typed Oracle internals
 
+Completed locally on September 6, 2026, on `refactor/stage-3-oracle-internals`.
+Stage 3 remains uncommitted. The refactored packages are installed only in the
+local synthetic Oracle database.
+
 Introduce typed internal resolution results while retaining public cursor
 interfaces. Consolidate validated Line of Business reads and clarify copy
 preparation, mutation, and verification. Prove parity for hierarchy selection,
 scope, HER/HEF data, errors, audit values, and deterministic hashes.
+
+- Apply and Current fetch the existing 29-column public resolver output into
+  one shared, column-anchored record. Public resolver SQL is unchanged.
+- Remarks and Value Codes share `get_defined_lob`; both reads, normalization,
+  locks, and error precedence remain unchanged. Copy retains its interleaved
+  source/destination validation sequence.
+- Copy has six internal phases for contexts, settings, hashes, changes,
+  verification, and results. Expanding these routines reproduces the original
+  statement sequence. Savepoint, locks, stale-hash check, and rollback remain
+  visible in the outer operation.
+
+Verification captured 745 read/preview cases and 35 rollback-only Apply cases
+before installation. The baseline repeated successfully before the upgrade and
+matched after it. Comparison includes public cursor names/types, rows, preview
+hashes, complete table contents, and error identities. Only generated HER GUIDs
+and fresh audit dates are normalized; insert/modification audit rules and the
+operation's Oracle timestamp window are checked separately. Existing identifiers
+and audit dates remain exact. Every Apply verifies restoration of all captured
+configuration tables, including plan ownership.
+
+The combined Python suite passed 303 tests (39 optional integration tests
+skipped). Reference SQL recipe/hierarchy checks passed, Oracle reported no
+compilation errors, and the running app's API contract and Copy Preview passed.
+Existing configuration settings were preserved; no production harness changed.
+
+For a subsequent local comparison, choose a new ignored artifact path:
+
+```powershell
+.venv/Scripts/python.exe -m database.maintenance.verify_oracle_refactor capture .run/oracle-before.json
+.venv/Scripts/python.exe database/run_poc.py install_internals
+.venv/Scripts/python.exe database/run_poc.py install_internals --confirm-internals
+.venv/Scripts/python.exe -m database.maintenance.verify_oracle_refactor compare .run/oracle-before.json
+```
+
+The installer previews by default and replaces only application PL/SQL objects.
+It does not reseed data or recreate tables. The comparison tool never commits;
+it requires a local synthetic database and refuses to overwrite a baseline.
 
 ## Stage 4: measured performance work
 

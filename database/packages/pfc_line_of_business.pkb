@@ -61,6 +61,29 @@ CREATE OR REPLACE PACKAGE BODY pfc_line_of_business AS
                 'Line of Business must be saved before claim fields can be configured.');
     END require_defined;
 
+    FUNCTION get_defined_lob (
+        p_payor_guid IN payors.payor_guid%TYPE,
+        p_lock       IN VARCHAR2
+    ) RETURN pfc_config_payor_context.line_of_business%TYPE
+    IS
+        l_lob pfc_config_payor_context.line_of_business%TYPE;
+    BEGIN
+        require_defined(p_payor_guid, p_lock);
+        -- Retain the feature adapters' second statement and its error timing.
+        -- Unlocked reads can observe a newer committed value after validation.
+        IF UPPER(TRIM(p_lock)) = 'Y' THEN
+            SELECT line_of_business INTO l_lob
+            FROM pfc_config_payor_context
+            WHERE payor_guid = TRIM(p_payor_guid)
+            FOR UPDATE;
+        ELSE
+            SELECT line_of_business INTO l_lob
+            FROM pfc_config_payor_context
+            WHERE payor_guid = TRIM(p_payor_guid);
+        END IF;
+        RETURN UPPER(TRIM(l_lob));
+    END get_defined_lob;
+
     PROCEDURE get_current (
         p_payor_guid IN payors.payor_guid%TYPE,
         p_result     OUT SYS_REFCURSOR

@@ -656,35 +656,7 @@ IS
     )
     IS
         l_results SYS_REFCURSOR;
-        l_row_pfc_guid pfc.pfc_guid%TYPE;
-        l_row_payor_guid pfc.payor_guid%TYPE;
-        l_row_plan_guid pfc.plan_guid%TYPE;
-        l_row_payor_type_guid payors.payor_type_guid%TYPE;
-        l_row_billing_form_code pfc.billing_form_code%TYPE;
-        l_row_form_template_guid pfc.form_template_guid%TYPE;
-        l_row_user_template_guid pfc.user_form_template_guid%TYPE;
-        l_row_cpd_start_date pfc.cpd_start_date%TYPE;
-        l_row_cpd_end_date pfc.cpd_end_date%TYPE;
-        l_payor_specific_exists VARCHAR2(1);
-        l_her_scope_code VARCHAR2(20);
-        l_is_clone_source VARCHAR2(1);
-        l_clone_template_rank PLS_INTEGER;
-        l_clone_payor_type_rank PLS_INTEGER;
-        l_electronic_rec_guid hcfa_electronic_records.electronic_rec_guid%TYPE;
-        l_row_record_type_code hcfa_electronic_records.record_type_code%TYPE;
-        l_record_name hcfa_electronic_records.record_name%TYPE;
-        l_her_payor_guid hcfa_electronic_records.payor_guid%TYPE;
-        l_her_payor_type_guid hcfa_electronic_records.payor_type_guid%TYPE;
-        l_her_form_template_guid hcfa_electronic_records.form_template_guid%TYPE;
-        l_her_user_template_guid hcfa_electronic_records.user_form_template_guid%TYPE;
-        l_her_sto_proc_name hcfa_electronic_records.sto_proc_name%TYPE;
-        l_field_number hcfa_electronic_fields.field_number%TYPE;
-        l_field_name hcfa_electronic_fields.field_name%TYPE;
-        l_hef_sto_proc_name hcfa_electronic_fields.sto_proc_name%TYPE;
-        l_hef_hard_coded_data hcfa_electronic_fields.hard_coded_data%TYPE;
-        l_position_from hcfa_electronic_fields.position_from%TYPE;
-        l_position_thru hcfa_electronic_fields.position_thru%TYPE;
-        l_order_num hcfa_electronic_fields.order_num%TYPE;
+        l_row pfc_config_internal.t_resolved_her_hef_row;
         l_row_count PLS_INTEGER := 0;
     BEGIN
         p_source_guid := NULL;
@@ -696,32 +668,19 @@ IS
             p_results => l_results
         );
         LOOP
-            FETCH l_results INTO
-                l_row_pfc_guid, l_row_payor_guid, l_row_plan_guid,
-                l_row_payor_type_guid, l_row_billing_form_code,
-                l_row_form_template_guid, l_row_user_template_guid,
-                l_row_cpd_start_date, l_row_cpd_end_date,
-                l_payor_specific_exists, l_her_scope_code,
-                l_is_clone_source, l_clone_template_rank,
-                l_clone_payor_type_rank, l_electronic_rec_guid,
-                l_row_record_type_code, l_record_name, l_her_payor_guid,
-                l_her_payor_type_guid, l_her_form_template_guid,
-                l_her_user_template_guid, l_her_sto_proc_name,
-                l_field_number, l_field_name, l_hef_sto_proc_name,
-                l_hef_hard_coded_data, l_position_from, l_position_thru,
-                l_order_num;
+            FETCH l_results INTO l_row;
             EXIT WHEN l_results%NOTFOUND;
             l_row_count := l_row_count + 1;
             set_context(
-                l_row_pfc_guid, l_row_payor_guid, l_row_plan_guid,
-                l_row_payor_type_guid, l_row_billing_form_code,
-                l_row_form_template_guid, l_row_user_template_guid,
-                l_row_cpd_start_date, l_row_cpd_end_date
+                l_row.pfc_guid, l_row.payor_guid, l_row.plan_guid,
+                l_row.payor_type_guid, l_row.billing_form_code,
+                l_row.form_template_guid, l_row.user_form_template_guid,
+                l_row.cpd_start_date, l_row.cpd_end_date
             );
-            IF l_is_clone_source = 'Y' THEN
+            IF l_row.is_clone_source = 'Y' THEN
                 IF p_source_guid IS NULL THEN
-                    p_source_guid := l_electronic_rec_guid;
-                ELSIF p_source_guid <> l_electronic_rec_guid THEN
+                    p_source_guid := l_row.electronic_rec_guid;
+                ELSIF p_source_guid <> l_row.electronic_rec_guid THEN
                     RAISE_APPLICATION_ERROR(c_err_unexpected_state,
                         'Script 2 returned inconsistent clone-source rows.');
                 END IF;

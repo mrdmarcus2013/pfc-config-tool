@@ -21,20 +21,8 @@ CREATE OR REPLACE PACKAGE BODY pfc_remarks_api AS
         p_lock       IN VARCHAR2
     ) RETURN pfc_remarks.t_line_of_business
     IS
-        l_lob pfc_config_payor_context.line_of_business%TYPE;
     BEGIN
-        pfc_line_of_business.require_defined(p_payor_guid, p_lock);
-        IF UPPER(TRIM(p_lock)) = 'Y' THEN
-            SELECT line_of_business INTO l_lob
-            FROM pfc_config_payor_context
-            WHERE payor_guid = TRIM(p_payor_guid)
-            FOR UPDATE;
-        ELSE
-            SELECT line_of_business INTO l_lob
-            FROM pfc_config_payor_context
-            WHERE payor_guid = TRIM(p_payor_guid);
-        END IF;
-        RETURN UPPER(TRIM(l_lob));
+        RETURN pfc_line_of_business.get_defined_lob(p_payor_guid, p_lock);
     END saved_lob;
 
     PROCEDURE inspect_intent(
