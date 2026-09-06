@@ -1,7 +1,10 @@
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { apiClient, ApiClientError } from "../.test-build/api/client.js";
 import { safeError } from "../.test-build/app/workflow.js";
+
+const originalFetch = globalThis.fetch;
+afterEach(() => { globalThis.fetch = originalFetch; });
 
 const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { "Content-Type": "application/json" },

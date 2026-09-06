@@ -1,76 +1,30 @@
 """Thin transaction adapter for the Oracle payor-copy engine."""
 import json
 import logging
+from typing import Any
 
 import oracledb
-from pydantic import BaseModel, ConfigDict, Field
-from typing import Literal
 
 from backend.app.database import create_connection, DatabaseConfigurationError
 from backend.app.errors import ApiError, translate_oracle_error
-from backend.app.models import GuidText
+# Retain imports from this module for existing service clients.
+from backend.app.models_payor_copy import (
+    CopyApplyRequest as CopyApplyRequest,
+    CopyChange as CopyChange,
+    CopyContext as CopyContext,
+    CopyDestination as CopyDestination,
+    CopyDestinationRequest as CopyDestinationRequest,
+    CopyDestinationsResponse as CopyDestinationsResponse,
+    CopyPreviewRequest as CopyPreviewRequest,
+    CopyResponse as CopyResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class CopyDestinationRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    source_payor_guid: GuidText
-    source_plan_guid: GuidText | None = None
-    audit_user: GuidText
-
-
-class CopyPreviewRequest(CopyDestinationRequest):
-    destination_payor_guid: GuidText
-
-
-class CopyDestination(BaseModel):
-    payor_guid: str
-    payor_name: str
-
-
-class CopyDestinationsResponse(BaseModel):
-    destinations: list[CopyDestination]
-
-
-class CopyApplyRequest(CopyPreviewRequest):
-    expected_state_hash: str = Field(pattern=r"^[A-Fa-f0-9]{64}$")
-
-
-class CopyContext(BaseModel):
-    pfc_guid: str
-    plan_guid: str | None
-    label: str
-    templates_changed: bool
-    form_template_before: str = "Unavailable"
-    user_template_before: str = "Unavailable"
-
-
-class CopyChange(BaseModel):
-    label: str
-    action: Literal["KEEP", "REMOVE", "COPY"]
-    level: str
-    record_type: str
-
-
-class CopyResponse(BaseModel):
-    status: Literal["READY", "NO_CHANGE", "APPLIED"]
-    state_hash: str
-    source_pfc_guid: str
-    billing_form_code: str
-    line_of_business: Literal["HOME_HEALTH", "HOSPICE"]
-    source_form_template: str = "Unavailable"
-    source_user_template: str = "Unavailable"
-    records_copied: int
-    records_kept: int
-    records_normalized: int = 0
-    records_removed: int
-    plan_records_removed: int
-    fields_copied: int
-    fields_removed: int
-    template_contexts_updated: int
-    contexts: list[CopyContext]
-    changes: list[CopyChange]
+def _copy_response(raw: Any) -> CopyResponse:
+    """Decode the Oracle JSON result whether the driver returns text or a CLOB."""
+    return CopyResponse.model_validate(json.loads(raw.read() if hasattr(raw, "read") else raw))
 
 
 COPY_ERRORS = {
@@ -121,8 +75,7 @@ class PayorCopyService:
                         }:
                             continue
                         raise
-                    raw = output.getvalue()
-                    result = CopyResponse.model_validate(json.loads(raw.read() if hasattr(raw, "read") else raw))
+                    result = _copy_response(output.getvalue())
                     if result.status not in {"READY", "NO_CHANGE"}:
                         raise ValueError("Unexpected eligibility response")
                     destinations.append(CopyDestination(payor_guid=payor_guid, payor_name=payor_name))
@@ -159,8 +112,7 @@ class PayorCopyService:
                     audit_user=request.audit_user,
                     expected_hash=getattr(request, "expected_state_hash", None),
                     result=output)
-                raw = output.getvalue()
-                response = CopyResponse.model_validate(json.loads(raw.read() if hasattr(raw, "read") else raw))
+                response = _copy_response(output.getvalue())
                 if (apply and response.status != "APPLIED") or (not apply and response.status == "APPLIED"):
                     raise ValueError("Unexpected copy operation response")
             if apply:

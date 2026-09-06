@@ -37,11 +37,15 @@ from backend.app.models import (
     ValueCodesCurrentRequest,
     ValueCodesCurrentResponse,
 )
-from backend.app.services.configuration import ConfigurationService
-from backend.app.services.payor_copy import (
-    PayorCopyService, CopyPreviewRequest, CopyApplyRequest, CopyResponse,
-    CopyDestinationRequest, CopyDestinationsResponse,
+from backend.app.models_payor_copy import (
+    CopyApplyRequest,
+    CopyDestinationRequest,
+    CopyDestinationsResponse,
+    CopyPreviewRequest,
+    CopyResponse,
 )
+from backend.app.services.configuration import ConfigurationService
+from backend.app.services.payor_copy import PayorCopyService
 
 
 app = FastAPI(title="PFC Configuration Tool API", version="0.1.0")

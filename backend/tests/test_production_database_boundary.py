@@ -14,6 +14,12 @@ PRODUCTION_SCRIPTS = ROOT / "database" / "production_tests"
 # name must be added here before any production harness is reviewed.
 # MatrixCare's real PFC table is intentionally not forbidden.
 TOOL_OWNED_ORACLE_OBJECTS = {
+    "PFC_COPY",
+    "PFC_CONFIG_PLANS",
+    "PFC_CONFIG_FORM_TEMPLATES",
+    "PFC_CONFIG_USER_TEMPLATES",
+    "PFC_PLAN_OWNER_GUARD",
+    "CONFIG_PLAN_OWNER_IMMUTABLE",
     "PFC_CONFIG_PAYOR_CONTEXT",
     "PFC_CONFIG_INTERNAL",
     "PFC_OPTION_TYPES",
@@ -31,6 +37,28 @@ TOOL_OWNED_ORACLE_OBJECTS = {
     "PFC_OPT_PROVIDER_TAXONOMY_OFF",
     "PFC_OPT_SERVICE_FACILITY",
 }
+
+
+def test_boundary_registry_covers_all_repository_owned_declarations() -> None:
+    """New local objects must not silently escape the standalone-script checks."""
+    database = ROOT / "database"
+    files = [database / "01_schema.sql"]
+    for directory in ("install", "packages", "types", "procedures", "functions"):
+        files.extend(path for path in (database / directory).rglob("*")
+                     if path.suffix in {".sql", ".pks", ".pkb"})
+    declaration = re.compile(
+        r"\bCREATE\s+(?:OR\s+REPLACE\s+)?"
+        r"(?:TABLE|PACKAGE(?:\s+BODY)?|TYPE(?:\s+BODY)?|PROCEDURE|FUNCTION|TRIGGER)"
+        r"\s+([A-Za-z][A-Za-z0-9_$#]*)", re.I,
+    )
+    # Include dynamic CREATE TABLE literals in the additive installers.
+    declared = {name.upper() for path in files
+                for name in declaration.findall(path.read_text(encoding="utf-8"))}
+    matrixcare_objects = {
+        "PAYORS", "PFC", "LINKING_FORM_LU",
+        "HCFA_ELECTRONIC_RECORDS", "HCFA_ELECTRONIC_FIELDS",
+    }
+    assert not declared - matrixcare_objects - TOOL_OWNED_ORACLE_OBJECTS
 
 READ_ONLY_SCRIPTS = {
     "03_service_facility_preview.sql",

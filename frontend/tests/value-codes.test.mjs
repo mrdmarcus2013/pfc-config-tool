@@ -82,7 +82,7 @@ test("selection identity includes saved LOB and every structured flag", () => {
 
 test("editor exposes LOB-specific controls and keeps diagnostics gated", () => {
   const root = dirname(dirname(fileURLToPath(import.meta.url)));
-  const source = readFileSync(join(root, "src", "App.tsx"), "utf8");
+  const source = readFileSync(join(root, "src", "app", "value-codes-editor.tsx"), "utf8");
   assert.match(source, /Add CBSA/); assert.match(source, /Add FIPS/);
   assert.match(source, /Add care-location value code 61\/G8/);
   assert.match(source, /Add patient-entered value code and amount/);

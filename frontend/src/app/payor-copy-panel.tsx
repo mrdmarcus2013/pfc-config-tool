@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { apiClient } from "../api/client.js";
-import type { PayorCopyRequest, PayorCopyResponse, SupportPayorContext } from "../api/types";
+import type { PayorCopyRequest, PayorCopyResponse } from "../api/types";
 import type { FrontendLaunchContext } from "../types/launch-context";
 import { safeError } from "./workflow.js";
 
@@ -33,7 +33,7 @@ export function CopyReview({ result, destination }: { result: PayorCopyResponse;
 }
 
 export function PayorCopyPanel({ source, sourceLabel, onClose, onApplied }: {
-  source: FrontendLaunchContext; sourceLabel: string; contexts: SupportPayorContext[];
+  source: FrontendLaunchContext; sourceLabel: string;
   onClose: () => void; onApplied: (destination: string) => void;
 }) {
   const [destination, setDestination] = useState("");

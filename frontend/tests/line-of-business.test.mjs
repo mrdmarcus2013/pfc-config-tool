@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { LineOfBusinessControl } from "../.test-build/app/line-of-business-control.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,13 +46,33 @@ test("stale LOB preview is discarded and must be previewed again", () => {
 
 test("page contains initial-save locking and two-stage all-plan reset wording", () => {
   const root = dirname(dirname(fileURLToPath(import.meta.url)));
-  const source = readFileSync(join(root, "src", "App.tsx"), "utf8");
+  const appSource = readFileSync(join(root, "src", "App.tsx"), "utf8");
+  const source = readFileSync(join(root, "src", "app", "line-of-business-control.tsx"), "utf8");
   assert.match(source, /Save Line of Business/);
-  assert.match(source, /Select and save a Line of Business before configuring claim fields/);
+  assert.match(appSource, /Select and save a Line of Business before configuring claim fields/);
   assert.match(source, /Change Line of Business\?/);
   assert.match(source, /This applies to all plans under this payor/);
   assert.match(source, /Confirm Reset/);
   assert.match(source, /Reset Fields and Change to/);
   assert.match(source, /clearCurrentConfigurations\(\)/);
   assert.doesNotMatch(source.replace(/SUPPORT_DEVELOPER_MODE[\s\S]*?details>/g, ""), />HER<|>HEF</);
+});
+
+test("LOB control preserves initial-save and saved-payor rendering", () => {
+  const props = {
+    context: { payor_guid: "synthetic-payor", plan_guid: null, pfc_guid: "synthetic-pfc", audit_user: "synthetic-audit" },
+    current: { status: "UNDEFINED", line_of_business: null },
+    loading: false, disabled: false, onChanged() {}, onChangeStarted() {},
+  };
+  const initial = renderToStaticMarkup(React.createElement(LineOfBusinessControl, props));
+  assert.match(initial, /disabled="">Save Line of Business/);
+  assert.doesNotMatch(initial, /Change Line of Business/);
+  for (const [lineOfBusiness, label] of [["HOME_HEALTH", "Home Health"], ["HOSPICE", "Hospice"]]) {
+    const saved = renderToStaticMarkup(React.createElement(LineOfBusinessControl, {
+      ...props, current: { status: "DEFINED", line_of_business: lineOfBusiness }, disabled: true,
+    }));
+    assert.ok(saved.includes(`Saved for this payor. Every plan uses ${label}.`));
+    assert.match(saved, /disabled="">Change Line of Business/);
+    assert.doesNotMatch(saved, /Save Line of Business|synthetic-audit/);
+  }
 });

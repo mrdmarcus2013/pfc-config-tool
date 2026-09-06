@@ -5,9 +5,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { CopyReview, PayorCopyPanel } from "../.test-build/app/payor-copy-panel.js";
 import { apiClient } from "../.test-build/api/client.js";
 
-const contexts=[{payor_guid:"SYN-A",payor_name:"Synthetic source",plan_guid:null},
-  {payor_guid:"SYN-B",payor_name:"Synthetic destination",plan_guid:null},
-  {payor_guid:"SYN-B",payor_name:"Synthetic destination",plan_guid:"SYN-PLAN"}];
 const response={status:"READY",state_hash:"A".repeat(64),source_pfc_guid:"SYN-PFC",billing_form_code:"837I_5010",
   source_form_template:"Home Health",source_user_template:"None",records_normalized:0,
   line_of_business:"HOME_HEALTH",records_copied:2,records_kept:1,records_removed:3,plan_records_removed:2,
@@ -19,7 +16,7 @@ const response={status:"READY",state_hash:"A".repeat(64),source_pfc_guid:"SYN-PF
 test("copy panel explains full destination replacement and requires preview before acceptance",()=>{
   const html=renderToStaticMarkup(React.createElement(PayorCopyPanel,{
     source:{payor_guid:"SYN-A",plan_guid:null,pfc_guid:"SYN-PFC",audit_user:"SYN-AUDIT"},
-    sourceLabel:"Synthetic source",contexts,onClose(){},onApplied(){},
+    sourceLabel:"Synthetic source",onClose(){},onApplied(){},
   }));
   assert.match(html,/Destination plan overrides will be cleared/);
   assert.match(html,/Line of Business must match/);

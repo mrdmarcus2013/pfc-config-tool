@@ -263,16 +263,22 @@ BEGIN
 END;
 """
 
-_CURRENT_OPTION_FIELDS = {
-    option["option_code"]: field["field_number"]
-    for field in OPTION_FIELDS
-    for option in field["options"]
-}
-
 
 def _rows_as_dicts(cursor: Any) -> list[dict[str, Any]]:
     columns = [description[0].lower() for description in cursor.description]
     return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+
+
+def _technical_changes(changes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "operation_order": int(change["operation_order"]),
+            "operation_code": str(change["operation_code"]),
+            "target_identifier": change.get("target_electronic_rec_guid"),
+            "field_number": change.get("field_number"),
+        }
+        for change in changes
+    ]
 
 
 def _safe_summary(status: str, change_count: int) -> str:
@@ -597,10 +603,7 @@ class ConfigurationService:
                 "selections": selections, "display_summary": str(row["display_label"]),
                 "state_hash": str(row["state_hash"]), "change_count": change_count,
                 "summary": _safe_summary(status, change_count), "pfc_guid": row.get("pfc_guid"),
-                "debug_changes": [{"operation_order": int(change["operation_order"]),
-                    "operation_code": str(change["operation_code"]),
-                    "target_identifier": change.get("target_electronic_rec_guid"),
-                    "field_number": change.get("field_number")} for change in changes],
+                "debug_changes": _technical_changes(changes),
             }
             if mode == "APPLY": connection.commit()
             else: connection.rollback()
@@ -801,17 +804,7 @@ class ConfigurationService:
                 "change_count": change_count,
                 "summary": _safe_summary(status, change_count),
                 "pfc_guid": row.get("pfc_guid"),
-                "debug_changes": [
-                    {
-                        "operation_order": int(change["operation_order"]),
-                        "operation_code": str(change["operation_code"]),
-                        "target_identifier": change.get(
-                            "target_electronic_rec_guid"
-                        ),
-                        "field_number": change.get("field_number"),
-                    }
-                    for change in changes
-                ],
+                "debug_changes": _technical_changes(changes),
             }
             if operation_mode == "APPLY":
                 connection.commit()
@@ -1279,15 +1272,7 @@ class ConfigurationService:
             "change_count": change_count,
             "summary": _safe_summary(status, change_count),
             "pfc_guid": summary.get("pfc_guid"),
-            "debug_changes": [
-                {
-                    "operation_order": int(change["operation_order"]),
-                    "operation_code": str(change["operation_code"]),
-                    "target_identifier": change.get("target_electronic_rec_guid"),
-                    "field_number": change.get("field_number"),
-                }
-                for change in changes
-            ],
+            "debug_changes": _technical_changes(changes),
         }
 
     @staticmethod
@@ -1304,7 +1289,7 @@ class ConfigurationService:
             status != "RESOLVED"
             or field_number != requested_field
             or capability != expected_capability
-            or _CURRENT_OPTION_FIELDS.get(option_code) != requested_field
+            or _OPTION_FIELD_NUMBERS.get(option_code) != requested_field
             or not row.get("pfc_guid")
         ):
             raise ApiError(

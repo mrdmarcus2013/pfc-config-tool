@@ -74,11 +74,14 @@ record type, with HEFs deleted before HERs.
 
 PFC resolution requires the selected payor, a future `CPD_END_DATE`, electronic
 default media, and a null type of bill. A null requested plan considers only a
-null-plan PFC; a populated requested plan considers that plan and the null-plan
-fallback. The newest `CPD_START_DATE` wins, and a tie fails safely.
+null-plan PFC; a populated requested plan considers only that exact owned plan.
+The newest `REC_ENT_DATE` wins; tied newest or missing eligible entry dates fail
+safely. `CPD_START_DATE` does not determine the winner.
 `PAYOR_TYPE_GUID` is authoritative from `PAYORS`.
 
-Source HERs must be non-payor, null-plan, and null-type-of-bill rows. Within a
+For plan customization, an applicable same-payor, null-plan HER is the first
+inherited source. Otherwise source HERs must be non-payor, null-plan, and
+null-type-of-bill rows. Within a
 template level, an exact payor type beats a generic null type. Source selection
 then follows matching user-form template, matching form template, and finally
 the null-template billing-form source. Missing or tied best sources fail safely.
@@ -87,10 +90,11 @@ GUIDs exactly from that resolved source and never from another payor.
 
 The minimal-override target actions are `NO_CHANGE`, `REMOVE_OVERRIDE`, and
 `REBUILD_OVERRIDE`. Functional desired state is compared with inherited source
-state before payor-only metadata is applied. Source-equivalent behavior requires
-zero payor HERs. A required override contains one complete HER and its complete
-source HEF set, with overlays applied. Cleanup scope is exactly `PAYOR_GUID` plus
-`BILLING_FORM_CODE` plus explicit `RECORD_TYPE_CODE`.
+state before ownership metadata is applied. Source-equivalent behavior requires
+zero overrides at the selected editing level. A required override contains one
+complete HER and its complete source HEF set, with overlays applied. Cleanup
+scope is exactly `PAYOR_GUID`, requested `PLAN_GUID` (including null),
+`BILLING_FORM_CODE`, and explicit `RECORD_TYPE_CODE`.
 
 A new or rebuilt payor HER uses the selected `PAYOR_GUID`, the authoritative
 `PAYORS.PAYOR_TYPE_GUID`, null `CARRY_FORWARD_IND`, and

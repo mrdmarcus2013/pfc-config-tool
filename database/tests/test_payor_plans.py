@@ -1,32 +1,48 @@
-"""Rollback-only integration checks against the additive synthetic plan fixtures."""
+"""Rollback-only integration checks with isolated transaction-local plan fixtures."""
 import json
 import os
 
 import oracledb
 import pytest
 
-from backend.app.database import create_connection
-from database.maintenance.rebuild_hierarchy import procedure_row, read_state, fingerprint
-from database.maintenance.seed_payor_plans import PAYORS, plan, change, apply_option, structured_apply, verify
+from backend.app.database import create_connection, get_oracle_settings
+from database.maintenance.rebuild_hierarchy import procedure_row, fingerprint
+from database.maintenance.seed_payor_plans import change, apply_option, structured_apply
+from database.tests.plan_fixtures import PAYORS, plan, pfc, seed, database_state
 
 pytestmark = pytest.mark.skipif(os.getenv("RUN_ORACLE_PLANS") != "1", reason="Set RUN_ORACLE_PLANS=1 for local plan integration")
 
 @pytest.fixture
-def cursor():
+def rollback_cursor():
+    assert get_oracle_settings().host.lower() in {"localhost", "127.0.0.1", "::1"}, "Local synthetic plan tests only"
     with create_connection() as connection:
         with connection.cursor() as cursor:
-            before = fingerprint(read_state(cursor))
+            before = fingerprint(database_state(cursor))
             try:
                 yield cursor
             finally:
                 connection.rollback()
-                assert fingerprint(read_state(cursor)) == before
+                assert fingerprint(database_state(cursor)) == before
+
+
+@pytest.fixture
+def cursor(rollback_cursor):
+    seed(rollback_cursor)
+    return rollback_cursor
 
 def current(cursor, owner=0, number=1, field="81"):
     return procedure_row(cursor, "pfc_get_current_config", [PAYORS[owner], plan(owner, number) if number else None, field])
 
 def test_seeded_current_states_and_newest_entry_date(cursor):
-    verify(cursor)
+    for owner, payor in enumerate(PAYORS):
+        for number in range(4):
+            selected = plan(owner, number) if number else None
+            row = current(cursor, owner=owner, number=number)
+            assert row["effective_option_code"] == ("PROVIDER_TAXONOMY_OFF" if number == 2 else "PROVIDER_TAXONOMY_ON")
+            assert row["pfc_guid"] == pfc(owner, number)
+            for package in ("pfc_value_codes_api", "pfc_remarks_api"):
+                row = procedure_row(cursor, package + ".current_configuration", [payor, selected])
+                assert row["configuration_status"] == "RESOLVED", row
     assert json.loads(current(cursor)["configuration_owners"])[0]["level"] == "PAYOR"
     assert json.loads(current(cursor, number=2)["configuration_owners"])[0]["level"] == "PAYOR_PLAN"
 
@@ -58,7 +74,7 @@ def test_tied_pfc_dates_block_and_new_winner_invalidates_preview(cursor):
     cursor.execute("UPDATE pfc SET rec_ent_date=DATE '2026-09-01' WHERE payor_guid=:p AND plan_guid=:g", p=PAYORS[0], g=plan(0, 2))
     with pytest.raises(oracledb.DatabaseError, match="20011"):
         current(cursor, number=2)
-    cursor.execute("UPDATE pfc SET rec_ent_date=DATE '2026-09-02' WHERE pfc_guid=:g", g="D3000000-0000-0000-0000-000001000099")
+    cursor.execute("UPDATE pfc SET rec_ent_date=DATE '2026-09-02' WHERE pfc_guid=:g", g=pfc(0, 99))
     with pytest.raises(oracledb.DatabaseError, match="2004[0-9]|stale|changed"):
         change(cursor, PAYORS[0], plan(0, 2), "PROVIDER_TAXONOMY_ON", "APPLY", preview["state_hash"])
 
@@ -102,17 +118,31 @@ def test_plan_inherits_parent_remarks_without_copying_or_removing_parent(cursor)
     parent = procedure_row(cursor, "pfc_remarks_api.current_configuration", [PAYORS[0], None])
     assert parent["custom_remark"] == "Synthetic parent remark"
 
-def test_pfc_edits_wait_for_configuration_payor_lock(cursor):
+def test_pfc_edits_wait_for_configuration_payor_lock(rollback_cursor):
     from concurrent.futures import ThreadPoolExecutor, TimeoutError
     from threading import Event
+    cursor = rollback_cursor
     ready = Event()
-    cursor.execute("SELECT payor_guid FROM payors WHERE payor_guid=:p FOR UPDATE", p=PAYORS[0])
+    # The writer needs a committed PFC visible in its own session. This test only
+    # locks an existing synthetic payor, temporarily updates its PFC, and rolls
+    # back both sessions; no expected configuration depends on demo content.
+    cursor.execute("""
+        SELECT p.payor_guid, p.pfc_guid FROM pfc p
+        JOIN payors owner ON owner.payor_guid = p.payor_guid
+        WHERE owner.payor_id LIKE 'SYN-%' AND owner.payor_guid NOT LIKE 'D1000000-%'
+        ORDER BY p.payor_guid, p.pfc_guid FETCH FIRST 1 ROW ONLY
+    """)
+    target = cursor.fetchone()
+    assert target is not None, "A committed synthetic PFC is required for the two-session lock check"
+    payor_guid, pfc_guid = target
+    cursor.execute("SELECT payor_guid FROM payors WHERE payor_guid=:p FOR UPDATE", p=payor_guid)
     def write():
         with create_connection() as other:
             try:
                 with other.cursor() as writer:
                     ready.set()
-                    writer.execute("UPDATE pfc SET rec_ent_date=SYSDATE WHERE pfc_guid=:g", g="D3000000-0000-0000-0000-000001000099")
+                    writer.execute("UPDATE pfc SET rec_ent_date=SYSDATE WHERE pfc_guid=:g", g=pfc_guid)
+                    assert writer.rowcount == 1
             finally:
                 other.rollback()
     with ThreadPoolExecutor(max_workers=1) as executor:

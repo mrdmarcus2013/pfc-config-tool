@@ -34,8 +34,12 @@ class Connection:
     def close(self): self.closed=True
 
 
-def test_preview_uses_consistent_read_only_transaction_and_never_commits():
+@pytest.mark.parametrize("as_lob", [False, True])
+def test_preview_uses_consistent_read_only_transaction_and_never_commits(as_lob):
     connection=Connection()
+    if as_lob:
+        connection.var = lambda *args: SimpleNamespace(
+            getvalue=lambda: SimpleNamespace(read=lambda: json.dumps(connection.result)))
     result=PayorCopyService(lambda:connection).run(CopyPreviewRequest(**REQUEST))
     assert result.status=="READY"
     assert connection.statements[0][0]=="SET TRANSACTION READ ONLY"
