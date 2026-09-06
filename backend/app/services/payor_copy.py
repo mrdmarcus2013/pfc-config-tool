@@ -49,6 +49,18 @@ COPY_ERRORS = {
 }
 
 
+COPY_SOURCE_ERRORS = {
+    20100: "A valid source payor, optional plan, and audit identity are required.",
+    20103: "The source billing form is not supported for copying.",
+    20104: "The source payor or plan has missing, ambiguous, or unsupported claim settings. Review the source before copying.",
+    20010: "The source configuration could not be resolved. Check the selected payor and plan ownership.",
+    20011: "The source configuration is ambiguous or has a missing entry date. Review the source before copying.",
+    20012: "The source inherits invalid claim settings. Correct its template or billing-form settings before copying.",
+    20050: "The source payor was not found.",
+    20053: "Save Line of Business for the source payor before copying.",
+}
+
+
 class PayorCopyService:
     def __init__(self, connection_factory=create_connection):
         self._connection_factory = connection_factory
@@ -60,6 +72,18 @@ class PayorCopyService:
             connection = self._connection_factory()
             cursor = connection.cursor()
             cursor.execute("SET TRANSACTION READ ONLY")
+            # Validate once even when there are no candidates. A source problem
+            # must not be hidden by the per-destination blocker filtering below.
+            try:
+                cursor.execute("""BEGIN pfc_copy.validate_source(
+                    :source_payor, :source_plan, :audit_user); END;""",
+                    source_payor=request.source_payor_guid,
+                    source_plan=request.source_plan_guid, audit_user=request.audit_user)
+            except oracledb.DatabaseError as exc:
+                code = getattr(exc.args[0], "code", None) if exc.args else None
+                if code in COPY_SOURCE_ERRORS:
+                    raise ApiError(409, "copy_source_blocked", COPY_SOURCE_ERRORS[code]) from None
+                raise
             cursor.execute("""SELECT payor_guid, payor_name FROM payors
                 WHERE payor_id LIKE 'SYN-%' AND payor_guid <> :source_payor
                 ORDER BY payor_name, payor_guid""", source_payor=request.source_payor_guid)

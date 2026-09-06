@@ -7,11 +7,17 @@ ordinary field editing must never select another payor as its source.
 ## User workflow
 
 The destination dropdown includes only synthetic catalog payors that pass the
-Oracle copy Preview for the selected source payor and plan. Eligibility runs in
-one read-only transaction and includes every current destination context. The
-panel reloads eligibility when its source changes and provides loading, retry,
-and empty-list feedback. Preview and Apply still revalidate; appearing in the
-dropdown does not reserve or authorize a database change.
+Oracle copy Preview for the selected source payor and plan. Eligibility first
+validates the source, including its selected plan, Line of Business and effective
+inherited settings, even when no candidate destinations exist. Source validation
+and destination previews run in one read-only transaction and include every
+current destination context. An invalid source produces an actionable error;
+an empty list means a valid source has no eligible destinations in the catalog.
+The panel reloads eligibility when its source changes and provides loading,
+retry, and empty-list feedback. Known Copy blockers show approved plain-language
+reasons; unexpected diagnostic text is not displayed. Preview and Apply still
+revalidate; appearing in the dropdown does not reserve or authorize a database
+change.
 
 COPY PAYOR SETTINGS opens a side panel from the configuration header. The loaded
 payor and optional plan are the fixed source. The destination is a different,
@@ -126,7 +132,8 @@ From the repository root:
 .venv/Scripts/python.exe -m database.maintenance.seed_payor_copy
 .venv/Scripts/python.exe -m database.maintenance.seed_payor_copy --apply
 $env:RUN_ORACLE_COPY='1'
-.venv/Scripts/python.exe -m pytest database/tests/test_payor_copy.py -q
+$env:RUN_ORACLE_COPY_SOURCE='1'
+.venv/Scripts/python.exe -m pytest database/tests/test_payor_copy.py database/tests/test_copy_source_validation.py -q
 ```
 
 The first command in each pair previews. Package installation is DDL but does not

@@ -184,6 +184,41 @@ CREATE OR REPLACE PACKAGE BODY pfc_copy AS
         IF p_context.pfc_guid<>l_winner THEN RAISE_APPLICATION_ERROR(-20104,'Configuration selection is inconsistent.'); END IF;
     END;
 
+    PROCEDURE validate_source(p_source_payor IN VARCHAR2, p_source_plan IN VARCHAR2,
+        p_audit_user IN VARCHAR2) IS
+        l_source pfc_config_internal.t_pfc_resolution;
+        l_count NUMBER;
+        l_guid hcfa_electronic_records.electronic_rec_guid%TYPE;
+        l_her hcfa_electronic_records%ROWTYPE;
+    BEGIN
+        IF TRIM(p_audit_user) IS NULL THEN
+            RAISE_APPLICATION_ERROR(-20100,'A valid copy operation and audit identity are required.');
+        END IF;
+        resolve_copy_context(p_source_payor,p_source_plan,l_source);
+        pfc_line_of_business.require_defined(p_source_payor);
+
+        -- Match the source half of run_copy's unsupported-record scope.
+        SELECT COUNT(*) INTO l_count FROM hcfa_electronic_records
+        WHERE payor_guid=p_source_payor AND billing_form_code=l_source.billing_form_code
+          AND type_of_bill IS NOT NULL AND (plan_guid IS NULL OR plan_guid=p_source_plan);
+        IF l_count>0 THEN
+            RAISE_APPLICATION_ERROR(-20104,'Unsupported billing-form or bill-type records require review before copying.');
+        END IF;
+
+        FOR record_row IN (SELECT DISTINCT record_type_code FROM hcfa_electronic_records
+                           WHERE billing_form_code=l_source.billing_form_code ORDER BY record_type_code) LOOP
+            l_guid:=effective(l_source,record_row.record_type_code);
+            IF l_guid IS NOT NULL THEN
+                SELECT * INTO l_her FROM hcfa_electronic_records WHERE electronic_rec_guid=l_guid;
+                -- Effective source-owned winners enter run_copy's desired set
+                -- and may be normalized. Only inherited winners must be safe.
+                IF l_her.payor_guid IS NULL THEN
+                    pfc_config_internal.assert_inherited_her_safe(l_her);
+                END IF;
+            END IF;
+        END LOOP;
+    END validate_source;
+
     PROCEDURE run_copy(p_source_payor VARCHAR2, p_source_plan VARCHAR2,
         p_destination_payor VARCHAR2, p_mode VARCHAR2, p_audit_user VARCHAR2,
         p_expected_hash VARCHAR2, p_result OUT CLOB) IS

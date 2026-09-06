@@ -2,7 +2,7 @@ import {
   clearCurrentConfigurations, subscribeCurrentConfigurations, loadConfigurationOverview,
   currentBoxSummary,
 } from "./app/configuration-overview";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "./api/client";
 import type {
   ConfigurationContextResponse, LineOfBusinessCurrentResponse, OptionField, SupportPayorContext,
@@ -12,6 +12,7 @@ import {
   selectCatalogFieldForEditor, safeError,
 } from "./app/workflow";
 import { fieldsUnlocked } from "./app/line-of-business";
+import { readCurrentLineOfBusiness } from "./app/line-of-business-current";
 import { SUPPORT_DEVELOPER_MODE } from "./app/environment";
 import { launchContextFromResolvedSelection, payorContextKey } from "./app/payor-context";
 import { PayorCopyPanel } from "./app/payor-copy-panel";
@@ -47,6 +48,7 @@ export function App() {
   const [lobLoading, setLobLoading] = useState(true);
   const [lobError, setLobError] = useState<string | null>(null);
   const [lobSuccess, setLobSuccess] = useState<string | null>(null);
+  const [lobRefreshRevision, setLobRefreshRevision] = useState(0);
   const [configurationContext, setConfigurationContext] =
     useState<ConfigurationContextResponse | null>(null);
   const [contextLoading, setContextLoading] = useState(SUPPORT_DEVELOPER_MODE);
@@ -63,6 +65,13 @@ export function App() {
   const [contextSwitching, setContextSwitching] = useState(false);
   const [payorSwitchError, setPayorSwitchError] = useState<string | null>(null);
   const contextRequestSequence = useRef(0);
+  const appMounted = useRef(false);
+  useLayoutEffect(() => {
+    appMounted.current = true;
+    return () => { appMounted.current = false; };
+  }, []);
+  // A callback from an earlier visit stays stale even when returning to a payor.
+  const lobContextRequest = contextRequestSequence.current;
   const activeContextKey = payorContextKey(activePayorContext);
 
   const loadOptions = async () => {
@@ -73,14 +82,11 @@ export function App() {
   };
   useEffect(() => { void loadOptions(); }, []);
   useEffect(() => {
-    let currentRequest = true;
-    setLobLoading(true); setLobError(null);
-    void apiClient.lineOfBusinessCurrent({ payor_guid: activeContext.payor_guid })
-      .then((response) => { if (currentRequest) setLobCurrent(response); })
-      .catch((caught) => { if (currentRequest) setLobError(safeError(caught).message); })
-      .finally(() => { if (currentRequest) setLobLoading(false); });
-    return () => { currentRequest = false; };
-  }, [activeContextKey]);
+    if (contextSwitching) return;
+    return readCurrentLineOfBusiness(activeContext.payor_guid, {
+      setCurrent: setLobCurrent, setLoading: setLobLoading, setError: setLobError,
+    });
+  }, [activeContextKey, contextSwitching, lobRefreshRevision]);
   useEffect(() => {
     let mounted = true;
     setPayorCatalogLoading(true); setPayorCatalogError(null);
@@ -212,8 +218,10 @@ export function App() {
         <LineOfBusinessControl key={`${activeContextKey}|${contextSwitching}`}
           context={activeContext} current={lobCurrent} loading={lobLoading}
           disabled={contextSwitching}
+          onSaved={() => { if (appMounted.current) setLobRefreshRevision(value => value + 1); }}
           onChangeStarted={() => { setSelectedField(null); setLobSuccess(null); }}
           onChanged={(lineOfBusiness, message) => {
+            if (!appMounted.current || lobContextRequest !== contextRequestSequence.current) return;
             clearCurrentConfigurations();
             setSelectedField(null); setLobSuccess(message); setLobError(null);
             setLobCurrent({ status: "DEFINED", line_of_business: lineOfBusiness });

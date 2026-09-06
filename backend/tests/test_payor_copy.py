@@ -104,8 +104,8 @@ def test_destinations_use_oracle_preview_and_exclude_blocked_candidates(blocker)
     result = PayorCopyService(lambda: connection).destinations(request)
     assert [d.payor_guid for d in result.destinations] == ["SYN-GOOD"]
     assert connection.statements[0][0] == "SET TRANSACTION READ ONLY"
-    assert connection.statements[1][1]["source_payor"] == "SYN-SOURCE"
-    assert "payor_guid <> :source_payor" in connection.statements[1][0]
+    assert connection.statements[2][1]["source_payor"] == "SYN-SOURCE"
+    assert "payor_guid <> :source_payor" in connection.statements[2][0]
     assert all(p["source_plan"] == "SYN-PLAN" for sql,p in connection.statements if "run_copy" in sql)
     assert connection.commits == 0 and connection.rollbacks == 1 and connection.closed
 
@@ -294,3 +294,129 @@ def test_destination_primary_error_survives_all_cleanup_failures(primary, catego
     assert caught.value.category == category
     assert connection.commits == 0 and connection.rollbacks == 1
     assert connection.events == ["cursor.close", "rollback", "connection.close"]
+
+
+class EligibilityCursor(CleanupCursor):
+    def fetchall(self):
+        self.connection.events.append("fetch candidates")
+        return self.connection.candidates
+
+
+class EligibilityConnection(CleanupConnection):
+    def __init__(self, *, source_error=None, candidates=(), **kwargs):
+        super().__init__(**kwargs)
+        self.source_error = source_error
+        self.candidates = candidates
+
+    def cursor(self):
+        self.events.append("cursor.open")
+        return EligibilityCursor(self)
+
+    def execute(self, sql, **params):
+        if sql == "SET TRANSACTION READ ONLY":
+            self.events.append("read only")
+        elif "validate_source" in sql:
+            self.events.append("validate source")
+        elif "SELECT payor_guid" in sql:
+            self.events.append("query candidates")
+        elif "run_copy" in sql:
+            self.events.append("preview " + params["destination_payor"])
+        super().execute(sql, **params)
+        if "validate_source" in sql and self.source_error is not None:
+            raise self.source_error
+
+
+@pytest.mark.parametrize("code,message", [
+    (20100, "A valid source payor, optional plan, and audit identity are required."),
+    (20103, "The source billing form is not supported for copying."),
+    (20104, "The source payor or plan has missing, ambiguous, or unsupported claim settings. Review the source before copying."),
+    (20010, "The source configuration could not be resolved. Check the selected payor and plan ownership."),
+    (20011, "The source configuration is ambiguous or has a missing entry date. Review the source before copying."),
+    (20012, "The source inherits invalid claim settings. Correct its template or billing-form settings before copying."),
+    (20050, "The source payor was not found."),
+    (20053, "Save Line of Business for the source payor before copying."),
+])
+def test_invalid_source_is_reported_before_empty_candidate_catalog(code, message, caplog):
+    connection = EligibilityConnection(source_error=oracledb.DatabaseError(
+        SimpleNamespace(code=code, message="private source database detail")))
+    with pytest.raises(ApiError) as caught:
+        PayorCopyService(lambda: connection).destinations(CopyDestinationRequest(
+            source_payor_guid="SYN-SOURCE", source_plan_guid="SYN-PLAN", audit_user="SYN-USER"))
+    assert (caught.value.status_code, caught.value.category, caught.value.message) == (
+        409, "copy_source_blocked", message)
+    assert connection.events == ["cursor.open", "read only", "validate source",
+                                 "cursor.close", "rollback", "connection.close"]
+    assert connection.commits == 0 and connection.rollbacks == 1 and connection.closed
+    assert "private" not in caplog.text
+
+
+@pytest.mark.parametrize("code", [3113, 6550, None])
+def test_source_validation_does_not_hide_unexpected_database_errors(code, caplog):
+    connection = EligibilityConnection(source_error=oracledb.DatabaseError(
+        SimpleNamespace(code=code, message="private source database detail")))
+    with pytest.raises(ApiError) as caught:
+        PayorCopyService(lambda: connection).destinations(CopyDestinationRequest(
+            source_payor_guid="SYN-SOURCE", audit_user="SYN-USER"))
+    assert (caught.value.status_code, caught.value.category, caught.value.message) == (
+        503, "database_failure", "The database operation could not be completed.")
+    assert "query candidates" not in connection.events
+    assert connection.commits == 0 and connection.rollbacks == 1 and connection.closed
+    assert "private" not in caplog.text
+
+
+@pytest.mark.parametrize("plan,candidates", [
+    (None, []),
+    ("SYN-PLAN", [("SYN-FIRST", "First eligible"), ("SYN-SECOND", "Second eligible")]),
+])
+def test_source_validation_runs_once_before_candidates_in_one_read_only_connection(plan, candidates):
+    connection = EligibilityConnection(candidates=candidates)
+    factory_calls = []
+
+    def connect():
+        factory_calls.append(True)
+        return connection
+
+    result = PayorCopyService(connect).destinations(CopyDestinationRequest(
+        source_payor_guid="SYN-SOURCE", source_plan_guid=plan, audit_user="SYN-USER"))
+    assert [item.payor_guid for item in result.destinations] == [guid for guid, _ in candidates]
+    assert len(factory_calls) == 1
+    assert connection.events == ["cursor.open", "read only", "validate source", "query candidates",
+        "fetch candidates", *("preview " + guid for guid, _ in candidates),
+        "cursor.close", "rollback", "connection.close"]
+    assert connection.statements[1][1] == {
+        "source_payor": "SYN-SOURCE", "source_plan": plan, "audit_user": "SYN-USER"}
+    assert connection.commits == 0 and connection.rollbacks == 1 and connection.closed
+
+
+def test_source_validation_error_survives_all_cleanup_failures(caplog):
+    connection = EligibilityConnection(source_error=oracledb.DatabaseError(
+        SimpleNamespace(code=20053, message="private source database detail")), **failing_cleanup())
+    with pytest.raises(ApiError) as caught:
+        PayorCopyService(lambda: connection).destinations(CopyDestinationRequest(
+            source_payor_guid="SYN-SOURCE", audit_user="SYN-USER"))
+    assert caught.value.category == "copy_source_blocked"
+    assert caught.value.message == "Save Line of Business for the source payor before copying."
+    assert connection.events[-3:] == ["cursor.close", "rollback", "connection.close"]
+    assert connection.commits == 0 and connection.rollbacks == 1
+    assert "private" not in caplog.text
+
+
+@pytest.mark.parametrize("candidates", [[], [("SYN-DESTINATION", "Synthetic destination")]])
+@pytest.mark.parametrize("code,status,category,message", [
+    (20053, 409, "copy_source_blocked", "Save Line of Business for the source payor before copying."),
+    (3113, 503, "database_failure", "The database operation could not be completed."),
+])
+def test_invalid_source_eligibility_api_returns_error_instead_of_empty_list(candidates, code, status, category, message):
+    connection = EligibilityConnection(candidates=candidates, source_error=oracledb.DatabaseError(
+        SimpleNamespace(code=code, message="private source database detail")))
+    app.dependency_overrides[get_copy_service] = lambda: PayorCopyService(lambda: connection)
+    try:
+        with TestClient(app) as client:
+            response = client.post("/api/payor-copy/destinations", json={
+                "source_payor_guid": "SYN-SOURCE", "source_plan_guid": "SYN-PLAN", "audit_user": "SYN-USER"})
+        assert response.status_code == status
+        assert response.json() == {"error": {"category": category, "message": message}}
+        assert "query candidates" not in connection.events
+        assert connection.commits == 0 and connection.rollbacks == 1 and connection.closed
+    finally:
+        app.dependency_overrides.pop(get_copy_service, None)

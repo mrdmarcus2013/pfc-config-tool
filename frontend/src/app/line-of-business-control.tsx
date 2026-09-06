@@ -1,12 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { apiClient } from "../api/client.js";
 import type {
   LineOfBusiness, LineOfBusinessChangeResponse, LineOfBusinessCurrentResponse,
 } from "../api/types";
 import type { FrontendLaunchContext } from "../types/launch-context";
-import { clearCurrentConfigurations } from "./configuration-overview.js";
 import { lineOfBusinessLabel, lobApplyRequest, lobPreviewAfterError, otherLineOfBusiness } from "./line-of-business.js";
-import { safeError, SingleFlightGate } from "./workflow.js";
+import { LineOfBusinessRequestScope, runLineOfBusinessRequest } from "./line-of-business-request.js";
 import { SUPPORT_DEVELOPER_MODE } from "./environment.js";
 
 interface LineOfBusinessControlProps {
@@ -15,33 +14,33 @@ interface LineOfBusinessControlProps {
   loading: boolean;
   disabled: boolean;
   onChanged: (lineOfBusiness: LineOfBusiness, message: string) => void;
+  onSaved: () => void;
   onChangeStarted: () => void;
 }
 
-export function LineOfBusinessControl({ context, current, loading, disabled, onChanged, onChangeStarted }: LineOfBusinessControlProps) {
+export function LineOfBusinessControl({ context, current, loading, disabled, onChanged, onSaved, onChangeStarted }: LineOfBusinessControlProps) {
   const saved = current?.line_of_business ?? null;
   const [selection, setSelection] = useState<LineOfBusiness | null>(null);
   const [stage, setStage] = useState<"warning" | "confirm" | null>(null);
   const [preview, setPreview] = useState<LineOfBusinessChangeResponse | null>(null);
   const [busy, setBusy] = useState<"save" | "preview" | "apply" | null>(null);
   const [error, setError] = useState<{ category: string; message: string } | null>(null);
-  const requestGate = useRef(new SingleFlightGate());
+  const requestScope = useRef(new LineOfBusinessRequestScope());
 
+  useLayoutEffect(() => requestScope.current.activate(), []);
   useEffect(() => { if (saved) setSelection(saved); }, [saved]);
 
   const saveInitial = async () => {
-    if (!selection || saved || !requestGate.current.tryEnter()) return;
-    setBusy("save"); setError(null);
-    try {
-      const response = await apiClient.lineOfBusinessSave({
+    if (!selection || saved) return;
+    await runLineOfBusinessRequest({
+      scope: requestScope.current, operation: "save", setBusy, setError, onSaved,
+      request: () => apiClient.lineOfBusinessSave({
         payor_guid: context.payor_guid,
         line_of_business: selection,
         audit_user: context.audit_user,
-      });
-      clearCurrentConfigurations();
-      onChanged(response.line_of_business, `${lineOfBusinessLabel(response.line_of_business)} was saved.`);
-    } catch (caught) { setError(safeError(caught)); }
-    finally { setBusy(null); requestGate.current.exit(); }
+      }),
+      onSuccess: response => onChanged(response.line_of_business, `${lineOfBusinessLabel(response.line_of_business)} was saved.`),
+    });
   };
 
   const beginChange = () => {
@@ -52,36 +51,38 @@ export function LineOfBusinessControl({ context, current, loading, disabled, onC
   };
 
   const runChangePreview = async () => {
-    if (!saved || !selection || selection === saved || !requestGate.current.tryEnter()) return;
-    setBusy("preview"); setError(null);
-    try {
-      const response = await apiClient.lineOfBusinessPreviewChange({
+    if (!saved || !selection || selection === saved) return;
+    await runLineOfBusinessRequest({
+      scope: requestScope.current, operation: "preview", setBusy, setError, onSaved,
+      request: () => apiClient.lineOfBusinessPreviewChange({
         payor_guid: context.payor_guid,
         requested_line_of_business: selection,
-      });
-      setPreview(response);
-      setStage(response.status === "NO_CHANGE" ? null : "confirm");
-    } catch (caught) { setError(safeError(caught)); }
-    finally { setBusy(null); requestGate.current.exit(); }
+      }),
+      onSuccess: response => {
+        setPreview(response);
+        setStage(response.status === "NO_CHANGE" ? null : "confirm");
+      },
+    });
   };
 
   const applyChange = async () => {
-    if (!preview || preview.status !== "CHANGES_REQUIRED" || !requestGate.current.tryEnter()) return;
-    setBusy("apply"); setError(null);
-    try {
-      const response = await apiClient.lineOfBusinessApplyChange(
+    if (!preview || preview.status !== "CHANGES_REQUIRED") return;
+    await runLineOfBusinessRequest({
+      scope: requestScope.current, operation: "apply", setBusy, setError, onSaved,
+      request: () => apiClient.lineOfBusinessApplyChange(
         lobApplyRequest(context, preview),
-      );
-      clearCurrentConfigurations();
-      setPreview(null); setStage(null);
-      onChanged(response.requested_line_of_business,
-        `Line of Business changed to ${lineOfBusinessLabel(response.requested_line_of_business)}. Managed claim-field customizations were reset for all plans.`);
-    } catch (caught) {
-      const safe = safeError(caught);
-      setPreview((value) => lobPreviewAfterError(value, safe.category));
-      setError(safe);
-      if (safe.category === "stale_preview") setStage("warning");
-    } finally { setBusy(null); requestGate.current.exit(); }
+      ),
+      onSuccess: response => {
+        setPreview(null); setStage(null);
+        onChanged(response.requested_line_of_business,
+          `Line of Business changed to ${lineOfBusinessLabel(response.requested_line_of_business)}. Managed claim-field customizations were reset for all plans.`);
+      },
+      onError: safe => {
+        setPreview((value) => lobPreviewAfterError(value, safe.category));
+        setError(safe);
+        if (safe.category === "stale_preview") setStage("warning");
+      },
+    });
   };
 
   return (
@@ -126,4 +127,3 @@ export function LineOfBusinessControl({ context, current, loading, disabled, onC
     </section>
   );
 }
-

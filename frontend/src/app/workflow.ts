@@ -1,4 +1,5 @@
 import { ApiClientError } from "../api/client.js";
+import { safeCopyErrorMessage } from "./copy-errors.js";
 import type {
   ConfigurationResponse,
   LineOfBusiness,
@@ -182,5 +183,7 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
 
 export const safeError = (error: unknown): { category: string; message: string } => {
   const category = error instanceof ApiClientError ? error.category : "server_failure";
-  return { category, message: SAFE_ERROR_MESSAGES[category] ?? SAFE_ERROR_MESSAGES.server_failure };
+  const copyMessage = error instanceof ApiClientError
+    ? safeCopyErrorMessage(category, error.message) : null;
+  return { category, message: copyMessage ?? SAFE_ERROR_MESSAGES[category] ?? SAFE_ERROR_MESSAGES.server_failure };
 };

@@ -216,7 +216,8 @@ rebuilding the exact child multiset.
 ## Correctness pass: Oracle validation and save results
 
 Completed locally on September 6, 2026, on `fix/config-validation-save-results`,
-after the Stage 4 checkpoint. The fixes remain uncommitted. These intentional
+after the Stage 4 checkpoint. It was checkpointed locally as `b1304ed` before
+the context-switch and Copy feedback pass. These intentional
 corrections remain separate from the behavior-preserving refactor commits.
 
 - Reject null, blank, unknown, and overlong invalid Oracle operation modes with
@@ -263,11 +264,51 @@ run before commit. A lost commit acknowledgement or lost HTTP response can still
 leave the save outcome uncertain; this pass does not add reconciliation or
 automatic retries.
 
+## Correctness pass: context switching and Copy feedback
+
+Implemented locally on `fix/context-switch-copy-feedback`, after `b1304ed`.
+These changes remain uncommitted and have not been pushed.
+
+- Give each mounted Line of Business control its own request lifetime. Late
+  Save, Preview, and Apply responses cannot update a removed control or release
+  a newer request, including when switching from A to B and back to A.
+- Invalidate configuration caches after a successful original-payor save and
+  refresh the currently displayed payor. Do not assign the old save response to
+  the new payor. Current reads discard stale success, error, and loading updates;
+  a failed context switch also refreshes the original payor.
+- Validate Copy's source once before examining destinations, in the same
+  read-only transaction. Invalid sources return an actionable error even when
+  the catalog has no candidates. A valid source with no eligible destinations
+  retains the existing empty-list response.
+- Show approved, specific Copy error reasons through an exact-message allowlist.
+  Unrecognized messages still receive safe fallback wording. Full destination
+  Preview and Apply checks, hashes, locking, and replacement behavior remain
+  unchanged.
+
+Frontend verification passed 105 tests and the production build/typecheck.
+Eight new deferred Line of Business tests exercise the actual request/current-read
+helpers, cache invalidation, A-to-B-to-A switching, and failed-switch refresh.
+Four Copy feedback tests cover specific blockers, API error propagation, safe
+fallbacks, and the existing stale-preview message. No browser was available;
+these checks do not claim mounted-browser interaction coverage.
+
+Final verification passed 429 Python tests (39 optional integration tests
+skipped), including 34 new rollback-only source-validation cases and 18 backend
+eligibility cases. The null-entry-date fixture was removed because the local
+schema's NOT NULL constraint prevents constructing that state; the shared
+missing-date guard remains unchanged. No schema constraint was relaxed.
+
+All 745 read/preview and 35 rollback-only Apply cases match the pre-change
+baseline, including full rows, hashes, and audit rules. After restarting the
+local backend, all 14 captured API/schema responses also match. An invalid-source
+request through Vite and the running API now returns a specific safe error;
+all 16 approved backend Copy messages preserve their exact frontend feedback.
+Oracle reports no compilation errors, installed Copy sources match the working
+files, and persisted configuration and plan ownership remain unchanged.
+Independent backend, Oracle, and frontend reviews found no material issues.
+
 ## Remaining correctness work
 
-- Late Line of Business save callbacks after a payor switch.
-- Invalid copy sources reported as an empty destination list and hidden copy
-  error reasons.
 - Consistent keyboard/focus handling across modal editors.
 
 Production harness adaptation remains a separate effort governed by

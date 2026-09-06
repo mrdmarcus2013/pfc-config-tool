@@ -48,13 +48,17 @@ test("page contains initial-save locking and two-stage all-plan reset wording", 
   const root = dirname(dirname(fileURLToPath(import.meta.url)));
   const appSource = readFileSync(join(root, "src", "App.tsx"), "utf8");
   const source = readFileSync(join(root, "src", "app", "line-of-business-control.tsx"), "utf8");
+  const requestSource = readFileSync(join(root, "src", "app", "line-of-business-request.ts"), "utf8");
   assert.match(source, /Save Line of Business/);
   assert.match(appSource, /Select and save a Line of Business before configuring claim fields/);
   assert.match(source, /Change Line of Business\?/);
   assert.match(source, /This applies to all plans under this payor/);
   assert.match(source, /Confirm Reset/);
   assert.match(source, /Reset Fields and Change to/);
-  assert.match(source, /clearCurrentConfigurations\(\)/);
+  assert.match(requestSource, /clearCurrentConfigurations\(\)/);
+  assert.match(appSource, /lobContextRequest !== contextRequestSequence\.current/);
+  assert.match(appSource, /\[activeContextKey, contextSwitching, lobRefreshRevision\]/);
+  assert.match(appSource, /onSaved=\{\(\) => \{ if \(appMounted\.current\) setLobRefreshRevision/);
   assert.doesNotMatch(source.replace(/SUPPORT_DEVELOPER_MODE[\s\S]*?details>/g, ""), />HER<|>HEF</);
 });
 
@@ -62,7 +66,7 @@ test("LOB control preserves initial-save and saved-payor rendering", () => {
   const props = {
     context: { payor_guid: "synthetic-payor", plan_guid: null, pfc_guid: "synthetic-pfc", audit_user: "synthetic-audit" },
     current: { status: "UNDEFINED", line_of_business: null },
-    loading: false, disabled: false, onChanged() {}, onChangeStarted() {},
+    loading: false, disabled: false, onChanged() {}, onSaved() {}, onChangeStarted() {},
   };
   const initial = renderToStaticMarkup(React.createElement(LineOfBusinessControl, props));
   assert.match(initial, /disabled="">Save Line of Business/);
