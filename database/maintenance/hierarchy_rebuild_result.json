@@ -1,0 +1,14 @@
+{
+  "status": "APPLIED",
+  "committed_at_utc": "2026-09-05T13:48:55.789912+00:00",
+  "her_count": 17,
+  "hef_count": 67,
+  "payors": 26,
+  "pfc_records": 27,
+  "home_health_payors": 13,
+  "hospice_payors": 13,
+  "user_templates": 5,
+  "payor_overrides": 0,
+  "verified_contexts": 26,
+  "after_fingerprint": "4d983b6a50ed68c716787c66a84f171efa21a56606862cedc75bfb3c4a687555"
+}

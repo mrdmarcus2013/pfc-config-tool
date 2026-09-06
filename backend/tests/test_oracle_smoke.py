@@ -14,6 +14,57 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def test_installed_synthetic_oracle_context_resolves_template_guids():
+    with TestClient(app) as client:
+        catalog = client.get("/api/support/payor-contexts")
+        assert catalog.status_code == 200
+        hierarchy = {
+            item["payor_id"]: item for item in catalog.json()["contexts"]
+            if item["payor_id"].startswith("SYN-HIER-")
+        }
+        assert set(hierarchy) == {
+            f"SYN-HIER-{number:02d}" for number in range(1, 10)
+        }
+        assert len({item["plan_guid"] for item in hierarchy.values()}) == 9
+
+        expected_templates = {
+            "SYN-HIER-01": (None, None),
+            "SYN-HIER-02": ("40000000-0000-0000-0000-00000000B100", None),
+            "SYN-HIER-03": ("40000000-0000-0000-0000-00000000B100", None),
+            "SYN-HIER-04": (None, "50000000-0000-0000-0000-00000000B100"),
+            "SYN-HIER-05": (None, "50000000-0000-0000-0000-00000000B100"),
+            "SYN-HIER-06": (
+                "40000000-0000-0000-0000-00000000B100",
+                "50000000-0000-0000-0000-00000000B100",
+            ),
+            "SYN-HIER-07": ("40000000-0000-0000-0000-00000000B200", None),
+            "SYN-HIER-08": (
+                "40000000-0000-0000-0000-00000000B200",
+                "50000000-0000-0000-0000-00000000B200",
+            ),
+            "SYN-HIER-09": (
+                "40000000-0000-0000-0000-00000000B200",
+                "50000000-0000-0000-0000-00000000B300",
+            ),
+        }
+        for payor_id, selection in hierarchy.items():
+            context = client.post("/api/config/context", json={
+                "payor_guid": selection["payor_guid"],
+                "plan_guid": selection["plan_guid"],
+            })
+            assert context.status_code == 200
+            resolved = context.json()
+            assert resolved["payor_guid"] == selection["payor_guid"]
+            assert resolved["plan_guid"] == selection["plan_guid"]
+            assert resolved["pfc_guid"] == selection["payor_guid"].replace(
+                "10000000", "20000000", 1
+            )
+            assert (
+                resolved["form_template_guid"],
+                resolved["user_form_template_guid"],
+            ) == expected_templates[payor_id]
+
+
 def test_installed_synthetic_oracle_poc_preview():
     with TestClient(app) as client:
         health = client.get("/api/health")

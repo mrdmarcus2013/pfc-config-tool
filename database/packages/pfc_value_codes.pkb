@@ -206,8 +206,8 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
                 add_hef_requirement(l_option, 3, '022', 'GET_VAL_CODE', NULL);
                 add_hef_requirement(l_option, 4, '025', 'GET_VAL_CODE_AMT', NULL);
             WHEN c_recipe_hospice_61_g8_vc80 THEN
-                add_hef_requirement(l_option, 1, '012', NULL, '61');
-                add_hef_requirement(l_option, 2, '015', 'GET_PAT_CBSA_CODE', NULL);
+                add_hef_requirement(l_option, 1, '012', 'GET_CARE_LOC_CODE', NULL);
+                add_hef_requirement(l_option, 2, '015', 'GET_CARE_LOC_VAL_CODE', NULL);
                 add_hef_requirement(l_option, 3, '022', NULL, '80');
                 add_hef_requirement(l_option, 4, '025', 'GET_DISTINCT_COVERED_DAYS', NULL);
             WHEN c_recipe_hospice_patient THEN

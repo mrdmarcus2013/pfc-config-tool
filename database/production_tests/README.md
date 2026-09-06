@@ -20,6 +20,20 @@ verify restoration, and finish with a full rollback.
 Keep real production identifiers only in an unsaved editor buffer. Committed
 manual inputs must retain their placeholders.
 
+Script 13 is a standalone read-only investigation of `PFC.PLAN_GUID` versus
+payor-owned `HCFA_ELECTRONIC_RECORDS.PLAN_GUID`. Leave its optional
+`PAYOR_GUID` input null to rank candidate payors and return detail for the top
+25, or populate it to return all eligible PFC/HER detail for one payor. The
+report gathers evidence for a future Payor Copy design; it does not implement
+copy behavior or establish a PLAN_GUID engine rule.
+
+Script 14 captures durable schema and aggregate configuration references for
+the four MatrixCare claim-configuration tables. Its first two independent
+result sets use standard `ALL_*` dictionary visibility; its third result set
+contains aggregate PFC/HER/HEF topology and at most 25 minimized technical
+examples. It emits no payor names, notes, hard-coded HEF data, or audit-user
+values and implements no copy behavior.
+
 Remarks validation uses files 10 through 12. Script 10 reports effective
 Default, Custom, or Unrecognized state. Script 11 produces a read-only Preview
 and deterministic state hash. Script 12 accepts that exact hash and the fixed

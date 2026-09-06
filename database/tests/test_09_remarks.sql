@@ -2,6 +2,7 @@ WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK
 SET SERVEROUTPUT ON
 
 DECLARE
+    l_owners VARCHAR2(4000);
     c_payor CONSTANT VARCHAR2(36) :=
         '10000000-0000-0000-0000-00000000D002';
     c_target CONSTANT VARCHAR2(20) := 'D23001900NTE182';
@@ -62,7 +63,7 @@ DECLARE
         FETCH l_result INTO l_status, l_lob, l_remarks_mode,
             l_custom_remark, l_canonical, l_display, l_pfc, l_form,
             l_source, l_action, l_her_count, l_hef_count,
-            l_source_hef_count, l_hash;
+            l_source_hef_count, l_hash, l_owners;
         CLOSE l_result;
     END;
 

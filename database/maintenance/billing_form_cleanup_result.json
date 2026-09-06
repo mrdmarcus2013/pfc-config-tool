@@ -1,0 +1,20 @@
+{
+  "status": "APPLIED",
+  "committed_at_utc": "2026-09-05T12:06:16.709642+00:00",
+  "approved_fingerprint": "d7e2b5a29169b14135f166cb75f5fd58ba7c569ad5a7617d41fadf19bac51c8f",
+  "applied_fingerprint": "09898a5fbd5eb7bb480438bb62932b9a7990ec3d7fa4e9d4c80f69bd13e01d90",
+  "counts": {
+    "pfc_updates": 9,
+    "her_updates": 4,
+    "her_deletions": 4,
+    "hef_deletions": 14,
+    "field_mapping_updates": 3
+  },
+  "billing_form_codes": [
+    "837I_5010"
+  ],
+  "unique_payors": 26,
+  "pfc_records": 27,
+  "payors_per_form_template": 13,
+  "orphan_hefs": 0
+}

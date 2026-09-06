@@ -1,0 +1,25 @@
+{
+  "status": "APPLIED",
+  "approved_fingerprint": "8bd72fc6013f3f04e4b64285f43b6c3b2124eab3faadcb32b5a206972eed3e7c",
+  "applied_fingerprint": "d7e2b5a29169b14135f166cb75f5fd58ba7c569ad5a7617d41fadf19bac51c8f",
+  "counts": {
+    "pfc_updated": 21,
+    "her_updated": 5,
+    "her_deleted": 5,
+    "hef_deleted": 14
+  },
+  "templates": [
+    {
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "name": "Home Health"
+    },
+    {
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "name": "Hospice"
+    }
+  ],
+  "payors_per_template": 13,
+  "pfc_records_assigned": 27,
+  "orphan_hefs": 0,
+  "obsolete_form_references": 0
+}

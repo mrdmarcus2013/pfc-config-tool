@@ -1,3 +1,5 @@
+import { remarksCurrentCache } from "./configuration-overview";
+import { ConfigurationOwnerDetails, configurationSourceStatus } from "./configuration-owner-details";
 import { useEffect, useRef, useState } from "react";
 import { apiClient } from "../api/client";
 import type {
@@ -77,11 +79,12 @@ export function RemarksEditor({
     setConfirmationOpen(false);
   };
 
-  const loadCurrent = async () => {
+  const loadCurrent = async (force = false) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await apiClient.remarksCurrent(currentRequest);
+      const response = await remarksCurrentCache.load(
+        { ...currentRequest, field_number: "80" }, () => apiClient.remarksCurrent(currentRequest), force);
       initialize(response);
       return response;
     } catch (caught) {
@@ -135,7 +138,7 @@ export function RemarksEditor({
       });
       setPreviewRecord(null);
       setSuccess(false);
-      const refreshed = await loadCurrent();
+      const refreshed = await loadCurrent(true);
       if (refreshed && remarksIntentMatchesCurrent(refreshed, requested)) {
         setSuccess(true);
       } else if (refreshed) {
@@ -180,8 +183,9 @@ export function RemarksEditor({
                     <details className="technical-details">
                       <summary>Technical details</summary>
                       <dl>
-                        <div><dt>Canonical status</dt><dd>{current.canonical_status}</dd></div>
+                        <div><dt>Canonical status</dt><dd>{configurationSourceStatus(current.configuration_owners)}</dd></div>
                         <div><dt>PFC GUID</dt><dd><code>{current.pfc_guid}</code></dd></div>
+                        <ConfigurationOwnerDetails owners={current.configuration_owners} />
                         {Object.entries(current.debug).map(([key, value]) => (
                           <div key={key}><dt>{key}</dt><dd><code>{String(value ?? "")}</code></dd></div>
                         ))}

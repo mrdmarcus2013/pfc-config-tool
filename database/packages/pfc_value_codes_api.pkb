@@ -94,6 +94,11 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
         p_result     OUT SYS_REFCURSOR
     )
     IS
+        l_inherited pfc_value_codes.t_configuration_state;
+        l_recipe VARCHAR2(50);
+        l_i PLS_INTEGER := 0;
+        l_owner_guid VARCHAR2(36);
+        l_owners VARCHAR2(4000);
         l_lob pfc_value_codes.t_line_of_business;
         l_none pfc_value_codes.t_selections := pfc_value_codes.no_selections;
         l_candidate pfc_value_codes.t_selections;
@@ -172,6 +177,38 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
             END IF;
         END IF;
 
+        IF l_is_default = 'Y' THEN
+            SELECT sto_proc_name INTO l_inherited.her_sto_proc_name
+            FROM hcfa_electronic_records WHERE electronic_rec_guid = l_engine.source_guid;
+            FOR f IN (SELECT field_number, field_name, sto_proc_name, hard_coded_data
+                FROM hcfa_electronic_fields WHERE electronic_rec_guid = l_engine.source_guid) LOOP
+                l_i := l_i + 1;
+                l_inherited.hefs(l_i).field_number := f.field_number;
+                l_inherited.hefs(l_i).field_name := f.field_name;
+                l_inherited.hefs(l_i).sto_proc_name := f.sto_proc_name;
+                l_inherited.hefs(l_i).hard_coded_data := f.hard_coded_data;
+            END LOOP;
+            l_recipe := pfc_value_codes.recognize_state(l_lob, l_inherited);
+            l_summary_text := CASE l_recipe
+                WHEN 'HOME_HEALTH_CBSA' THEN 'CBSA (inherited)'
+                WHEN 'HOME_HEALTH_CBSA_FIPS' THEN 'CBSA and FIPS (inherited)'
+                WHEN 'HOSPICE_61_G8' THEN 'Care-location value code 61/G8 (inherited)'
+                WHEN 'HOSPICE_61_G8_VC80_DAYS' THEN 'Care-location value code 61/G8 and value code 80 with days covered (inherited)'
+                WHEN 'HOSPICE_PATIENT_VALUE' THEN 'Patient-entered value code and amount (inherited)'
+                WHEN 'HOSPICE_PATIENT_VALUE_VC80_DAYS' THEN 'Patient-entered value code and amount and value code 80 with days covered (inherited)'
+                WHEN 'HOSPICE_VC80_DAYS' THEN 'Value code 80 with days covered (inherited)'
+                ELSE CASE WHEN l_inherited.her_sto_proc_name = 'RETURN_0' THEN 'Off (inherited)' ELSE 'Default' END END;
+        END IF;
+
+        l_owner_guid := l_engine.source_guid;
+        IF l_engine.existing_her_count = 1 THEN
+            SELECT electronic_rec_guid INTO l_owner_guid FROM hcfa_electronic_records
+            WHERE payor_guid = TRIM(p_payor_guid)
+              AND (plan_guid = p_plan_guid OR (plan_guid IS NULL AND p_plan_guid IS NULL)) AND billing_form_code = l_engine.billing_form_code
+              AND record_type_code = 'D23002310HI286';
+        END IF;
+        l_owners := '[' || pfc_config_internal.owner_json(l_owner_guid, 'Value Codes') || ']';
+
         OPEN p_result FOR SELECT
             CAST(l_status AS VARCHAR2(40)) configuration_status,
             CAST(l_lob AS VARCHAR2(20)) line_of_business,
@@ -188,7 +225,8 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
             CAST(l_engine.source_guid AS VARCHAR2(36)) source_electronic_rec_guid,
             CAST(l_engine.existing_her_count AS NUMBER) existing_payor_her_count,
             CAST(l_engine.existing_hef_count AS NUMBER) existing_payor_hef_count,
-            CAST(l_engine.state_hash AS VARCHAR2(64)) state_hash
+            CAST(l_engine.state_hash AS VARCHAR2(64)) state_hash,
+            l_owners configuration_owners
         FROM dual;
     END current_configuration;
 

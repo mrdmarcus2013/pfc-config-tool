@@ -15,6 +15,19 @@ test("options metadata uses the actual endpoint", async () => {
   assert.equal(calls[0][0], "/api/options");
 });
 
+test("Tier 2 payor catalog uses the read-only support endpoint", async () => {
+  const calls = [];
+  globalThis.fetch = async (...args) => {
+    calls.push(args);
+    return jsonResponse({ contexts: [] });
+  };
+
+  assert.deepEqual(await apiClient.supportPayorContexts(), { contexts: [] });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], "/api/support/payor-contexts");
+  assert.equal(calls[0][1], undefined);
+});
+
 test("Provider preview sends one exact launch-context request", async () => {
   const calls = [];
   globalThis.fetch = async (path, init) => { calls.push({ path, init }); return jsonResponse({ status: "PREVIEW" }); };
@@ -23,6 +36,23 @@ test("Provider preview sends one exact launch-context request", async () => {
   assert.equal(calls.length, 1);
   assert.equal(calls[0].path, "/api/config/preview");
   assert.deepEqual(JSON.parse(calls[0].init.body), request);
+});
+
+test("Tier 2 configuration context requests the resolved PFC and templates", async () => {
+  const calls = [];
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, init });
+    return jsonResponse({ status: "RESOLVED" });
+  };
+  const request = { payor_guid: "synthetic-payor", plan_guid: "synthetic-plan" };
+
+  await apiClient.configurationContext(request);
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, "/api/config/context");
+  assert.equal(calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].init.body), request);
+  assert.doesNotMatch(calls[0].init.body, /audit/i);
 });
 
 test("opening each supported field uses one current-state request without audit data", async () => {

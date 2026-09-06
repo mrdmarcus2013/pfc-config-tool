@@ -39,6 +39,35 @@ class StubService:
     def list_options(self):
         return ConfigurationService().list_options()
 
+    def list_support_payor_contexts(self):
+        return {"contexts": [
+            {
+                "payor_guid": "synthetic-payor-1",
+                "payor_name": "Synthetic Payor One",
+                "payor_id": "SYN-ONE",
+                "plan_guid": None,
+            },
+            {
+                "payor_guid": "synthetic-payor-2",
+                "payor_name": "Synthetic Payor Two",
+                "payor_id": "SYN-TWO",
+                "plan_guid": "synthetic-plan-2",
+            },
+        ]}
+
+    def configuration_context(self, **request):
+        return {
+            "status": "RESOLVED",
+            "payor_guid": request["payor_guid"],
+            "plan_guid": request["plan_guid"],
+            "pfc_guid": "30000000-0000-0000-0000-0000000000A1",
+            "billing_form_code": "837I_5010",
+            "form_template_guid": "50000000-0000-0000-0000-0000000000A1",
+            "user_form_template_guid": "60000000-0000-0000-0000-0000000000A1",
+        "form_template_name": "Home Health",
+        "user_form_template_name": "Provider Taxonomy On",
+        }
+
     def preview(self, **request):
         return self._result("PREVIEW", request)
 
@@ -204,6 +233,28 @@ def test_health_reports_application_and_oracle(client):
     assert response.json() == {"application": "ok", "oracle": "connected"}
 
 
+def test_support_payor_context_catalog_preserves_database_pairs(client):
+    response = client.get("/api/support/payor-contexts")
+
+    assert response.status_code == 200
+    assert response.json() == {"contexts": [
+        {
+            "payor_guid": "synthetic-payor-1",
+            "payor_name": "Synthetic Payor One",
+            "payor_id": "SYN-ONE",
+            "plan_guid": None,
+            "plan_name": None,
+        },
+        {
+            "payor_guid": "synthetic-payor-2",
+            "payor_name": "Synthetic Payor Two",
+            "payor_id": "SYN-TWO",
+            "plan_guid": "synthetic-plan-2",
+            "plan_name": None,
+        },
+    ]}
+
+
 def test_line_of_business_endpoints_have_typed_payor_level_contracts(client):
     payor = BASE_REQUEST["payor_guid"]
     current = client.post("/api/config/line-of-business/current", json={"payor_guid": payor})
@@ -271,6 +322,30 @@ def test_options_are_grouped_and_hide_database_details(client):
     assert "sto_proc" not in response.text.lower()
     assert "return_1" not in response.text.lower()
     assert "record_type_code" not in response.text.lower()
+
+
+def test_configuration_context_exposes_resolved_guids_without_audit_data(client):
+    request = {
+        "payor_guid": BASE_REQUEST["payor_guid"],
+        "plan_guid": "40000000-0000-0000-0000-0000000000A1",
+    }
+    response = client.post("/api/config/context", json=request)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "RESOLVED",
+        "payor_guid": request["payor_guid"],
+        "plan_guid": request["plan_guid"],
+        "pfc_guid": "30000000-0000-0000-0000-0000000000A1",
+        "billing_form_code": "837I_5010",
+        "form_template_guid": "50000000-0000-0000-0000-0000000000A1",
+        "user_form_template_guid": "60000000-0000-0000-0000-0000000000A1",
+        "form_template_name": "Home Health",
+        "user_form_template_name": "Provider Taxonomy On",
+    }
+
+    rejected = client.post("/api/config/context", json={**request, "audit_user": "extra"})
+    assert rejected.status_code == 422
 
 
 def test_preview_validates_required_request_fields(client):

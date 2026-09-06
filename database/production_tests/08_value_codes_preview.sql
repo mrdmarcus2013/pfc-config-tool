@@ -700,9 +700,9 @@ DECLARE
                         'GET_VAL_CODE_AMT', NULL);
                 END IF;
             ELSIF l_care_location = 'Y' AND l_covered_days = 'Y' THEN
-                set_managed_pair(p_target_index, '012', NULL, '61');
+                set_managed_pair(p_target_index, '012', 'GET_CARE_LOC_CODE', NULL);
                 set_managed_pair(p_target_index, '015',
-                    'GET_PAT_CBSA_CODE', NULL);
+                    'GET_CARE_LOC_VAL_CODE', NULL);
                 set_managed_pair(p_target_index, '022', NULL, '80');
                 set_managed_pair(p_target_index, '025',
                     'GET_DISTINCT_COVERED_DAYS', NULL);

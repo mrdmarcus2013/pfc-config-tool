@@ -31,7 +31,8 @@ BEGIN
             SELECT
                 h.electronic_rec_guid,
                 CASE
-                    WHEN h.user_form_template_guid IS NOT NULL THEN 1
+                    WHEN h.payor_guid = l_pfc.payor_guid THEN 0
+                        WHEN h.user_form_template_guid IS NOT NULL THEN 1
                     WHEN h.form_template_guid IS NOT NULL THEN 2
                     ELSE 3
                 END AS template_rank,
@@ -43,7 +44,7 @@ BEGIN
             FROM hcfa_electronic_records h
             WHERE h.billing_form_code = l_pfc.billing_form_code
               AND h.record_type_code = p_record_type_code
-              AND h.payor_guid IS NULL
+              AND (h.payor_guid IS NULL OR (p_plan_guid IS NOT NULL AND h.payor_guid = l_pfc.payor_guid))
               AND h.plan_guid IS NULL
               AND h.type_of_bill IS NULL
               AND (
@@ -96,7 +97,7 @@ BEGIN
     WHERE h.billing_form_code = l_pfc.billing_form_code
       AND h.record_type_code = p_record_type_code
       AND h.payor_guid = l_pfc.payor_guid
-      AND h.plan_guid IS NULL
+      AND (h.plan_guid = p_plan_guid OR (h.plan_guid IS NULL AND p_plan_guid IS NULL))
       AND h.type_of_bill IS NULL
       AND (
             h.payor_type_guid = l_pfc.payor_type_guid
@@ -127,7 +128,8 @@ BEGIN
                 ELSE 'N'
             END AS payor_specific_her_exists,
             CASE
-                WHEN h.payor_guid = l_pfc.payor_guid THEN 'PAYOR_SPECIFIC'
+                WHEN h.payor_guid = l_pfc.payor_guid
+                  AND (h.plan_guid = p_plan_guid OR (h.plan_guid IS NULL AND p_plan_guid IS NULL)) THEN 'PAYOR_SPECIFIC'
                 ELSE 'GENERIC'
             END AS her_scope_code,
             CASE
@@ -174,7 +176,7 @@ BEGIN
                 h.payor_guid = l_pfc.payor_guid
                 OR h.payor_guid IS NULL
               )
-          AND h.plan_guid IS NULL
+          AND (h.plan_guid IS NULL OR (h.payor_guid = l_pfc.payor_guid AND h.plan_guid = p_plan_guid))
           AND h.type_of_bill IS NULL
           AND (
                 h.payor_type_guid = l_pfc.payor_type_guid

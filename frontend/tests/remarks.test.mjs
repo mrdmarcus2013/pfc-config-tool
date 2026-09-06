@@ -109,12 +109,12 @@ test("shared editor includes radios, textarea, counter, validation, hash apply, 
   assert.match(source, /!dirty \|\| !valid/);
   assert.match(source, /setPreviewRecord\(null\)/);
   assert.match(source, /expected_state_hash: preview!\.state_hash/);
-  assert.match(source, /await loadCurrent\(\)/);
+  assert.match(source, /await loadCurrent\(true\)/);
   assert.match(source, /supportDeveloperMode &&/);
 });
 
 test("LOB changes close the editor and clear shared current-state cache", () => {
   const source = readFileSync(join(root, "src", "App.tsx"), "utf8");
   assert.match(source, /onChangeStarted=\{\(\) => \{ setSelectedField\(null\)/);
-  assert.match(source, /currentConfigurationCache\.clear\(\)/);
+  assert.match(source, /clearCurrentConfigurations\(\)/);
 });

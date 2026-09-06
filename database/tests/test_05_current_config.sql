@@ -2,6 +2,7 @@ WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK
 SET SERVEROUTPUT ON
 
 DECLARE
+    l_owners VARCHAR2(4000);
     c_ui_payor CONSTANT VARCHAR2(36) :=
         '10000000-0000-0000-0000-00000000D001';
     c_audit_user CONSTANT VARCHAR2(36) :=
@@ -58,7 +59,7 @@ DECLARE
         );
         FETCH l_result INTO
             l_status, l_field_number, l_capability, l_option_code,
-            l_mode, l_report_address, l_enabled, l_pfc_guid, l_canonical;
+            l_mode, l_report_address, l_enabled, l_pfc_guid, l_canonical, l_owners;
         IF l_result%NOTFOUND THEN
             RAISE_APPLICATION_ERROR(-20971, 'Current resolver returned no row.');
         END IF;

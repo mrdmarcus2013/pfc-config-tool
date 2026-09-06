@@ -1,8 +1,12 @@
+import { clearCurrentConfigurations, subscribeCurrentConfigurations, loadConfigurationOverview,
+  currentBoxSummary, valueCodesCurrentCache } from "./app/configuration-overview";
+import { ConfigurationOwnerDetails, configurationSourceStatus } from "./app/configuration-owner-details";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "./api/client";
 import type {
   ConfigurationResponse, CurrentConfigurationResponse, LineOfBusiness,
-  LineOfBusinessChangeResponse, LineOfBusinessCurrentResponse, OptionField,
+  ConfigurationContextResponse, LineOfBusinessChangeResponse,
+  LineOfBusinessCurrentResponse, OptionField, SupportPayorContext,
   ValueCodeSelections, ValueCodesChangeResponse, ValueCodesCurrentResponse,
 } from "./api/types";
 import {
@@ -26,6 +30,11 @@ import {
 } from "./app/presentation";
 import { SUPPORT_DEVELOPER_MODE } from "./app/environment";
 import {
+  launchContextFromResolvedSelection, payorContextKey,
+} from "./app/payor-context";
+import { ContextSelectors } from "./app/context-selectors";
+import { technicalContextRows } from "./app/technical-context";
+import {
   emptyValueCodeSelections, hospiceValueIsDisabled, setHomeHealthValue, setHospiceValue,
   valueCodeSelectionIdentity, valueCodeSelectionsEqual, valueCodesSummary,
 } from "./app/value-codes";
@@ -39,12 +48,12 @@ import { UI_DEMO_DISPLAY_CONTEXT, UI_DEMO_LAUNCH_CONTEXT } from "./data/ui-demo-
 import type { ClaimFieldCatalogEntry, ClaimFieldSection } from "./types/claim-field";
 import type { FrontendLaunchContext } from "./types/launch-context";
 
-const CAPABILITY_DESCRIPTION = {
-  "service-facility": "Service Facility reporting settings",
-  "provider-taxonomy": "Provider Taxonomy reporting",
-  "value-codes": "Value Codes settings",
-  "remarks": "Remarks settings",
-} as const;
+const INITIAL_PAYOR_CONTEXT: SupportPayorContext = {
+  payor_guid: UI_DEMO_LAUNCH_CONTEXT.payor_guid,
+  payor_name: UI_DEMO_DISPLAY_CONTEXT.payorName,
+  payor_id: UI_DEMO_DISPLAY_CONTEXT.payorId,
+  plan_guid: UI_DEMO_LAUNCH_CONTEXT.plan_guid,
+};
 
 type FieldGroupLayout =
   | "billing"
@@ -153,9 +162,9 @@ function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supportDeve
     setCurrent(response); setSelected(response.selections); setPreviewRecord(null);
     setConfirmationOpen(false);
   };
-  const loadCurrent = async () => {
+  const loadCurrent = async (force = false) => {
     setLoading(true); setError(null);
-    try { const response = await apiClient.valueCodesCurrent(request); initialize(response); return response; }
+    try { const response = await valueCodesCurrentCache.load({ ...request, field_number: "39-41" }, () => apiClient.valueCodesCurrent(request), force); initialize(response); return response; }
     catch (caught) { setCurrent(null); setError(safeError(caught)); return null; }
     finally { setLoading(false); }
   };
@@ -180,7 +189,7 @@ function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supportDeve
       await apiClient.valueCodesApply({ ...request, selections: selected,
         audit_user: context.audit_user, expected_state_hash: preview!.state_hash });
       setPreviewRecord(null); setSuccess(false);
-      const refreshed = await loadCurrent();
+      const refreshed = await loadCurrent(true);
       if (refreshed && valueCodeSelectionsEqual(refreshed.selections, selected)) setSuccess(true);
       else if (refreshed) setError({ category: "confirmation_failed", message: "The applied Value Codes configuration could not be confirmed." });
     } catch (caught) {
@@ -193,14 +202,15 @@ function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supportDeve
     <aside className="field-editor" role="dialog" aria-modal="true" aria-labelledby="editor-title">
       <ClaimFieldPanelHeader title="Value Codes" onClose={onClose} />
       <div className="editor-body"><section className="editor-section"><h3>Value Codes</h3>
-        {loading && <p className="current-loading" role="status">Loading current configurationâ€¦</p>}
+        {loading && <p className="current-loading" role="status">Loading current configuration…</p>}
         {current && <><div className="configuration-stage current-configuration">
           <h4 className="configuration-stage-title">Current configuration</h4>
           <p><strong>{current.display_summary}</strong></p>
           {current.is_default && <p className="helper">Uses the standard configuration inherited for this payor.</p>}
           {supportDeveloperMode && <details className="technical-details"><summary>Technical details</summary><dl>
-            <div><dt>Canonical status</dt><dd>{current.canonical_status}</dd></div>
+            <div><dt>Canonical status</dt><dd>{configurationSourceStatus(current.configuration_owners)}</dd></div>
             <div><dt>PFC GUID</dt><dd><code>{current.pfc_guid}</code></dd></div>
+                        <ConfigurationOwnerDetails owners={current.configuration_owners} />
             {Object.entries(current.debug).map(([key, value]) => <div key={key}><dt>{key}</dt><dd><code>{String(value ?? "")}</code></dd></div>)}
           </dl></details>}
         </div><div className="configuration-stage proposed-configuration">
@@ -222,8 +232,8 @@ function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supportDeve
         </div>}
       </section></div>
       <EditorFooter actionState={actionState} previewDisabled={busy !== null || loading || current === null || !dirty}
-        previewLabel={busy === "preview" ? "Previewingâ€¦" : "Preview"} onDismiss={onClose} onPreview={runPreview} onApply={() => setConfirmationOpen(true)}/>
-      {confirmationOpen && <div className="confirmation-backdrop" role="presentation"><div className="confirmation" role="alertdialog" aria-modal="true"><h3>Apply configuration?</h3><p><strong>{field.fieldNumber} â€” Value Codes</strong></p><p>{summary}</p><div className="confirmation-actions"><button type="button" className="secondary-button" onClick={() => setConfirmationOpen(false)}>Cancel</button><button type="button" className="primary-button" onClick={runApply}>Apply</button></div></div></div>}
+        previewLabel={busy === "preview" ? "Previewing…" : "Preview"} onDismiss={onClose} onPreview={runPreview} onApply={() => setConfirmationOpen(true)}/>
+      {confirmationOpen && <div className="confirmation-backdrop" role="presentation"><div className="confirmation" role="alertdialog" aria-modal="true"><h3>Apply configuration?</h3><p><strong>{field.fieldNumber} — Value Codes</strong></p><p>{summary}</p><div className="confirmation-actions"><button type="button" className="secondary-button" onClick={() => setConfirmationOpen(false)}>Cancel</button><button type="button" className="primary-button" onClick={runApply}>Apply</button></div></div></div>}
     </aside></div>;
 }
 
@@ -364,7 +374,7 @@ function FieldEditor({ field, context, onClose, supportDeveloperMode }: FieldEdi
         <div className="editor-body">
           <section className="editor-section">
             <h3>{field.capabilityKey === "service-facility" ? "Service Facility Reporting" : "Provider Taxonomy"}</h3>
-            {currentLoading && <p className="current-loading" role="status">Loading current configurationâ€¦</p>}
+            {currentLoading && <p className="current-loading" role="status">Loading current configuration…</p>}
             {currentError && (
               <div className="notice error" role="alert">
                 <strong>Current configuration could not be loaded</strong>
@@ -392,7 +402,8 @@ function FieldEditor({ field, context, onClose, supportDeveloperMode }: FieldEdi
                       <dl>
                         <div><dt>Effective option</dt><dd><code>{currentConfig.effective_option_code}</code></dd></div>
                         <div><dt>PFC GUID</dt><dd><code>{currentConfig.pfc_guid}</code></dd></div>
-                        {currentConfig.canonical !== null && <div><dt>Canonical</dt><dd>{currentConfig.canonical ? "Yes" : "No"}</dd></div>}
+                        <ConfigurationOwnerDetails owners={currentConfig.configuration_owners} />
+                        <div><dt>Canonical status</dt><dd>{configurationSourceStatus(currentConfig.configuration_owners)}</dd></div>
                       </dl>
                     </details>
                   )}
@@ -478,13 +489,15 @@ function FieldEditor({ field, context, onClose, supportDeveloperMode }: FieldEdi
 }
 
 interface LineOfBusinessControlProps {
+  context: FrontendLaunchContext;
   current: LineOfBusinessCurrentResponse | null;
   loading: boolean;
+  disabled: boolean;
   onChanged: (lineOfBusiness: LineOfBusiness, message: string) => void;
   onChangeStarted: () => void;
 }
 
-function LineOfBusinessControl({ current, loading, onChanged, onChangeStarted }: LineOfBusinessControlProps) {
+function LineOfBusinessControl({ context, current, loading, disabled, onChanged, onChangeStarted }: LineOfBusinessControlProps) {
   const saved = current?.line_of_business ?? null;
   const [selection, setSelection] = useState<LineOfBusiness | null>(null);
   const [stage, setStage] = useState<"warning" | "confirm" | null>(null);
@@ -500,11 +513,11 @@ function LineOfBusinessControl({ current, loading, onChanged, onChangeStarted }:
     setBusy("save"); setError(null);
     try {
       const response = await apiClient.lineOfBusinessSave({
-        payor_guid: UI_DEMO_LAUNCH_CONTEXT.payor_guid,
+        payor_guid: context.payor_guid,
         line_of_business: selection,
-        audit_user: UI_DEMO_LAUNCH_CONTEXT.audit_user,
+        audit_user: context.audit_user,
       });
-      currentConfigurationCache.clear();
+      clearCurrentConfigurations();
       onChanged(response.line_of_business, `${lineOfBusinessLabel(response.line_of_business)} was saved.`);
     } catch (caught) { setError(safeError(caught)); }
     finally { setBusy(null); requestGate.current.exit(); }
@@ -522,7 +535,7 @@ function LineOfBusinessControl({ current, loading, onChanged, onChangeStarted }:
     setBusy("preview"); setError(null);
     try {
       const response = await apiClient.lineOfBusinessPreviewChange({
-        payor_guid: UI_DEMO_LAUNCH_CONTEXT.payor_guid,
+        payor_guid: context.payor_guid,
         requested_line_of_business: selection,
       });
       setPreview(response);
@@ -536,9 +549,9 @@ function LineOfBusinessControl({ current, loading, onChanged, onChangeStarted }:
     setBusy("apply"); setError(null);
     try {
       const response = await apiClient.lineOfBusinessApplyChange(
-        lobApplyRequest(UI_DEMO_LAUNCH_CONTEXT, preview),
+        lobApplyRequest(context, preview),
       );
-      currentConfigurationCache.clear();
+      clearCurrentConfigurations();
       setPreview(null); setStage(null);
       onChanged(response.requested_line_of_business,
         `Line of Business changed to ${lineOfBusinessLabel(response.requested_line_of_business)}. Managed claim-field customizations were reset for all plans.`);
@@ -554,17 +567,17 @@ function LineOfBusinessControl({ current, loading, onChanged, onChangeStarted }:
     <section className="lob-card" aria-labelledby="lob-heading">
       <div className="lob-heading-row">
         <div><span className="eyebrow">Payor-level setting</span><h2 id="lob-heading">Line of Business</h2></div>
-        {saved && <button type="button" className="secondary-button" onClick={beginChange}>Change Line of Business</button>}
+        {saved && <button type="button" className="secondary-button" disabled={disabled} onClick={beginChange}>Change Line of Business</button>}
       </div>
       {loading && <p className="lob-status" role="status">Loading Line of Business…</p>}
       {!loading && current && <>
-        <fieldset className="lob-choices" disabled={saved !== null || busy !== null}>
+        <fieldset className="lob-choices" disabled={disabled || saved !== null || busy !== null}>
           {(["HOME_HEALTH", "HOSPICE"] as LineOfBusiness[]).map((value) => <label className="choice compact" key={value}>
             <input type="radio" name="line-of-business" checked={(saved ?? selection) === value} onChange={() => setSelection(value)} />
             <span>{lineOfBusinessLabel(value)}</span>
           </label>)}
         </fieldset>
-        {!saved && <button type="button" className="primary-button" disabled={!selection || busy !== null} onClick={saveInitial}>{busy === "save" ? "Saving…" : "Save Line of Business"}</button>}
+        {!saved && <button type="button" className="primary-button" disabled={disabled || !selection || busy !== null} onClick={saveInitial}>{busy === "save" ? "Saving…" : "Save Line of Business"}</button>}
         {saved && <p className="lob-status">Saved for this payor. Every plan uses {lineOfBusinessLabel(saved)}.</p>}
       </>}
       {error && <div className="notice error" role="alert"><strong>Line of Business was not changed</strong><p>{error.category === "stale_preview" ? "The reset scope changed after it was reviewed. Continue to run a new preview." : error.message}</p></div>}
@@ -594,6 +607,8 @@ function LineOfBusinessControl({ current, loading, onChanged, onChangeStarted }:
 }
 
 export function App() {
+  const [, setCurrentRevision] = useState(0);
+  useEffect(() => subscribeCurrentConfigurations(() => setCurrentRevision((value) => value + 1)), []);
   const [optionFields, setOptionFields] = useState<OptionField[]>([]);
   const [metadataError, setMetadataError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -603,6 +618,23 @@ export function App() {
   const [lobLoading, setLobLoading] = useState(true);
   const [lobError, setLobError] = useState<string | null>(null);
   const [lobSuccess, setLobSuccess] = useState<string | null>(null);
+  const [configurationContext, setConfigurationContext] =
+    useState<ConfigurationContextResponse | null>(null);
+  const [contextLoading, setContextLoading] = useState(SUPPORT_DEVELOPER_MODE);
+  const [contextError, setContextError] = useState<string | null>(null);
+  const [activeContext, setActiveContext] =
+    useState<FrontendLaunchContext>(UI_DEMO_LAUNCH_CONTEXT);
+  const [activePayorContext, setActivePayorContext] =
+    useState<SupportPayorContext>(INITIAL_PAYOR_CONTEXT);
+  const [supportPayorContexts, setSupportPayorContexts] =
+    useState<SupportPayorContext[]>([]);
+  const [payorCatalogLoading, setPayorCatalogLoading] =
+    useState(SUPPORT_DEVELOPER_MODE);
+  const [payorCatalogError, setPayorCatalogError] = useState<string | null>(null);
+  const [contextSwitching, setContextSwitching] = useState(false);
+  const [payorSwitchError, setPayorSwitchError] = useState<string | null>(null);
+  const contextRequestSequence = useRef(0);
+  const activeContextKey = payorContextKey(activePayorContext);
 
   const loadOptions = async () => {
     setLoading(true); setMetadataError(null);
@@ -612,15 +644,107 @@ export function App() {
   };
   useEffect(() => { void loadOptions(); }, []);
   useEffect(() => {
+    let currentRequest = true;
     setLobLoading(true); setLobError(null);
-    void apiClient.lineOfBusinessCurrent({ payor_guid: UI_DEMO_LAUNCH_CONTEXT.payor_guid })
-      .then(setLobCurrent)
-      .catch((caught) => setLobError(safeError(caught).message))
-      .finally(() => setLobLoading(false));
+    void apiClient.lineOfBusinessCurrent({ payor_guid: activeContext.payor_guid })
+      .then((response) => { if (currentRequest) setLobCurrent(response); })
+      .catch((caught) => { if (currentRequest) setLobError(safeError(caught).message); })
+      .finally(() => { if (currentRequest) setLobLoading(false); });
+    return () => { currentRequest = false; };
+  }, [activeContextKey]);
+  useEffect(() => {
+    let mounted = true;
+    setPayorCatalogLoading(true); setPayorCatalogError(null);
+    void apiClient.supportPayorContexts()
+      .then((response) => {
+        if (!mounted) return;
+        setSupportPayorContexts(response.contexts);
+        const current = response.contexts.find(
+          (context) => payorContextKey(context) === activeContextKey,
+        );
+        if (current) setActivePayorContext(current);
+      })
+      .catch((caught) => {
+        if (mounted) setPayorCatalogError(safeError(caught).message);
+      })
+      .finally(() => { if (mounted) setPayorCatalogLoading(false); });
+
+    const requestNumber = ++contextRequestSequence.current;
+    setContextLoading(true); setContextError(null);
+    void apiClient.configurationContext({
+      payor_guid: activeContext.payor_guid,
+      plan_guid: activeContext.plan_guid,
+    })
+      .then((response) => {
+        if (mounted && requestNumber === contextRequestSequence.current) {
+          setConfigurationContext(response);
+          setActiveContext(launchContextFromResolvedSelection(
+            INITIAL_PAYOR_CONTEXT, response, activeContext.audit_user,
+          ));
+        }
+      })
+      .catch((caught) => {
+        if (mounted && requestNumber === contextRequestSequence.current) {
+          setContextError(safeError(caught).message);
+        }
+      })
+      .finally(() => {
+        if (mounted && requestNumber === contextRequestSequence.current) {
+          setContextLoading(false);
+        }
+      });
+    return () => { mounted = false; };
   }, []);
+
+  const selectPayorContext = async (selectionKey: string) => {
+    const selection = supportPayorContexts.find(
+      (context) => payorContextKey(context) === selectionKey,
+    );
+    if (!selection || (selectionKey === activeContextKey && configurationContext)) return;
+    if (selectedField && !window.confirm("Discard the open editor and switch configuration?")) return;
+    const requestNumber = ++contextRequestSequence.current;
+    setContextSwitching(true); setContextLoading(true);
+    setContextError(null); setPayorSwitchError(null); setSelectedField(null);
+    try {
+      const resolved = await apiClient.configurationContext({
+        payor_guid: selection.payor_guid,
+        plan_guid: selection.plan_guid,
+      });
+      if (requestNumber !== contextRequestSequence.current) return;
+      const nextContext = launchContextFromResolvedSelection(
+        selection, resolved, activeContext.audit_user,
+      );
+      clearCurrentConfigurations();
+      setLobCurrent(null); setLobLoading(true); setLobError(null); setLobSuccess(null);
+      setActivePayorContext(selection);
+      setActiveContext(nextContext);
+      setConfigurationContext(resolved);
+      setContextError(null);
+    } catch (caught) {
+      if (requestNumber === contextRequestSequence.current) {
+        setPayorSwitchError(safeError(caught).message);
+      }
+    } finally {
+      if (requestNumber === contextRequestSequence.current) {
+        setContextSwitching(false); setContextLoading(false);
+      }
+    }
+  };
 
   const lob = lobCurrent?.line_of_business ?? null;
   const unlocked = fieldsUnlocked(lob);
+  useEffect(() => {
+    if (contextSwitching || lobLoading || lobError || !lob) return;
+    void loadConfigurationOverview({ payor_guid: activeContext.payor_guid, plan_guid: activeContext.plan_guid });
+  }, [activeContextKey, lob, lobLoading, lobError, contextSwitching]);
+
+  const boxSummary = (capability: NonNullable<ClaimFieldCatalogEntry["capabilityKey"]>) => {
+    if (contextSwitching || lobLoading) return "Loading?";
+    if (lobError) return "Unable to determine";
+    if (!lob) return "Set Line of Business";
+    return currentBoxSummary(capability, activeContext);
+  };
+
 
   const normalizedSearch = search.trim().toLowerCase();
   const visibleFields = useMemo(() => CLAIM_FIELD_CATALOG.filter((field) =>
@@ -633,21 +757,27 @@ export function App() {
         <div className="page-heading"><div><span className="eyebrow">UB-04 institutional claim</span><h1>Customize Fields</h1></div><span className={`connection-status ${metadataError ? "offline" : ""}`}>{loading ? "Loading capabilities…" : metadataError ? "Capabilities unavailable" : "Capabilities loaded"}</span></div>
 
         <section className="context-card" aria-label="Configuration context">
-          <dl className="context-grid">
-            <div><dt>Payor</dt><dd>{UI_DEMO_DISPLAY_CONTEXT.payorName}</dd></div>
-            <div><dt>Billing Form</dt><dd>{UI_DEMO_DISPLAY_CONTEXT.billingFormCode}</dd></div>
-            <div><dt>Plan</dt><dd>{UI_DEMO_DISPLAY_CONTEXT.planName ?? "None"}</dd></div>
-          </dl>
-          {SUPPORT_DEVELOPER_MODE && <details className="technical-details context-technical"><summary>Technical details</summary><dl>
-            <div><dt>Payor GUID</dt><dd><code>{UI_DEMO_LAUNCH_CONTEXT.payor_guid}</code></dd></div>
-            <div><dt>Plan GUID</dt><dd><code>{UI_DEMO_LAUNCH_CONTEXT.plan_guid ?? "None"}</code></dd></div>
-            <div><dt>PFC GUID</dt><dd><code>{UI_DEMO_LAUNCH_CONTEXT.pfc_guid}</code></dd></div>
-          </dl></details>}
+          <ContextSelectors contexts={supportPayorContexts} active={activePayorContext}
+            disabled={payorCatalogLoading || contextSwitching}
+            billingForm={configurationContext?.billing_form_code ?? "Unavailable"}
+            onSelect={key => { void selectPayorContext(key); }} />
+          {(payorCatalogError || payorSwitchError) && <p role="alert">{payorCatalogError ?? payorSwitchError}</p>}
+          <p className="context-inheritance">{activeContext.plan_guid
+            ? "Editing this plan. Default inherits payor settings."
+            : "Editing payor settings. Changes also affect plans that inherit these settings."}</p>
+          {SUPPORT_DEVELOPER_MODE && <details className="technical-details context-technical"><summary>Technical details</summary>
+            {contextError && <p role="alert">Template context unavailable. {contextError}</p>}
+            <dl>{technicalContextRows(activeContext, configurationContext, contextLoading)
+              .map((row) => <div key={row.label}><dt>{row.label}</dt><dd><code>{row.value}</code></dd></div>)}</dl>
+          </details>}
         </section>
 
-        <LineOfBusinessControl current={lobCurrent} loading={lobLoading}
+        <LineOfBusinessControl key={`${activeContextKey}|${contextSwitching}`}
+          context={activeContext} current={lobCurrent} loading={lobLoading}
+          disabled={contextSwitching}
           onChangeStarted={() => { setSelectedField(null); setLobSuccess(null); }}
           onChanged={(lineOfBusiness, message) => {
+            clearCurrentConfigurations();
             setSelectedField(null); setLobSuccess(message); setLobError(null);
             setLobCurrent({ status: "DEFINED", line_of_business: lineOfBusiness });
           }} />
@@ -684,7 +814,7 @@ export function App() {
                             {groupFields.map((field) => {
                               const available = !loading && !metadataError
                                 && catalogFieldIsAvailable(field, optionFields);
-                              const editable = available
+                              const editable = !contextSwitching && available
                                 && catalogFieldIsEditable(field, optionFields, lob);
                               const canSpan = ["billing", "patient-details", "tail"].includes(group.layout);
                               const wide = canSpan && field.label.length > 35 ? " field-cell--wide" : "";
@@ -698,14 +828,17 @@ export function App() {
                                   onClick={() => setSelectedField(
                                     selectCatalogFieldForEditor(field, optionFields, lob),
                                   )}
-                                  aria-label={`Field ${field.fieldNumber}, ${field.label}${editable ? ", configurable" : available ? ", requires Line of Business" : ", not configurable yet"}`}
+                                  aria-label={`Field ${field.fieldNumber}, ${field.label}${available && field.capabilityKey ? `, Current configuration: ${boxSummary(field.capabilityKey)}` : ""}${editable ? ", configurable" : available ? ", requires Line of Business" : ", not configurable yet"}`}
                                 >
                                   <span className="field-cell-heading">
                                     <span className="field-number">{field.fieldNumber}</span>
                                     {available && <span className="edit-affordance" aria-hidden="true">{unlocked ? "Edit ›" : "Locked"}</span>}
                                   </span>
                                   <strong>{field.label}</strong>
-                                  {available && field.capabilityKey && <small>{unlocked ? CAPABILITY_DESCRIPTION[field.capabilityKey].replace(" settings", "") : "Save Line of Business to configure"}</small>}
+                                  {available && field.capabilityKey && <span className="field-current-summary" aria-live="polite">
+                                    <span className="field-current-label">Current configuration</span>
+                                    <span>{boxSummary(field.capabilityKey)}</span>
+                                  </span>}
                                 </button>
                               );
                             })}
@@ -722,10 +855,10 @@ export function App() {
         </section>
       </main>
       {selectedField && lob && (fieldEditorRoute(selectedField) === "value-codes"
-        ? <ValueCodesEditor field={selectedField} context={UI_DEMO_LAUNCH_CONTEXT} lineOfBusiness={lob} onClose={() => setSelectedField(null)} supportDeveloperMode={SUPPORT_DEVELOPER_MODE} />
+        ? <ValueCodesEditor field={selectedField} context={activeContext} lineOfBusiness={lob} onClose={() => setSelectedField(null)} supportDeveloperMode={SUPPORT_DEVELOPER_MODE} />
         : fieldEditorRoute(selectedField) === "remarks"
-          ? <RemarksEditor field={selectedField} context={UI_DEMO_LAUNCH_CONTEXT} lineOfBusiness={lob} onClose={() => setSelectedField(null)} supportDeveloperMode={SUPPORT_DEVELOPER_MODE} />
-          : <FieldEditor field={selectedField} context={UI_DEMO_LAUNCH_CONTEXT} onClose={() => setSelectedField(null)} supportDeveloperMode={SUPPORT_DEVELOPER_MODE} />)}
+          ? <RemarksEditor field={selectedField} context={activeContext} lineOfBusiness={lob} onClose={() => setSelectedField(null)} supportDeveloperMode={SUPPORT_DEVELOPER_MODE} />
+          : <FieldEditor field={selectedField} context={activeContext} onClose={() => setSelectedField(null)} supportDeveloperMode={SUPPORT_DEVELOPER_MODE} />)}
     </div>
   );
 }

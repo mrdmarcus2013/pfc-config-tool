@@ -1,5 +1,8 @@
 # PFC Configuration Tool frontend
 
+Payor and plan dropdowns, plan inheritance, and additive synthetic fixtures are
+documented in [Payor plan configuration](../docs/PAYOR_PLAN_CONFIGURATION.md).
+
 This is the standalone React and TypeScript vertical slice for **Customize
 Claim Fields**. Vite provides the local development server and production
 bundle. The UI is intentionally dependency-light and uses ordinary CSS.
@@ -30,11 +33,13 @@ is supplied by the development launch context and remains internal, never shown
 or editable. Oracle continues to resolve the PFC using `payor_guid` and nullable
 `plan_guid`; the display-context `pfc_guid` is never sent as a target.
 
-The UI Demo Payor starts with Line of Business undefined. Home Health or
-Hospice must be saved before Fields 77 and 81 can be opened. A later Line of
-Business change uses a warning, read-only reset preview, and final confirmation.
-Successful reset closes the field editor and clears cached field state so the
-next opening performs a fresh Oracle read.
+The approved hierarchy seed starts UI Demo Payor as Hospice with no user
+template: Value Codes inherit care-location 61/G8 from its form template,
+Service Facility and Taxonomy inherit Off, and Remarks use the standard source.
+The [hierarchy checkpoint](../docs/SYNTHETIC_CONFIGURATION_HIERARCHY.md) documents
+all payor assignments. Current-setting Technical details show each effective
+HER's configuration level owner. An inherited Value Codes summary shows its
+actual capabilities; unchecked proposed selections continue to mean inheritance.
 
 MatrixCare host integration is future work. A host launch is expected to supply
 `payor_guid`, nullable `plan_guid`, `pfc_guid`, and the authenticated audit-user
@@ -56,6 +61,21 @@ npm run dev
 For a production bundle, set the same value before `npm run build`; Vite embeds
 the setting at build time. Unset the environment value or set it to `false` for
 the normal customer-facing mode. No visible developer-mode control is rendered.
+
+The Configuration Context diagnostic section resolves its values through
+Oracle and shows the selected payor, plan, PFC, form template, and user form
+template GUIDs. Missing template assignments are shown as `None`; a failed
+context lookup is shown as unavailable and does not block the normal UI.
+
+The header loads the local synthetic payor catalog in both normal and Tier 2
+mode. Payor and Plan are linked dropdowns, followed by the resolved Billing Form.
+Plan options contain only the selected payor's plans. Payor-level settings edits
+the null-plan parent; a named plan edits only that plan's overrides. Oracle
+validates ownership and selects the newest eligible PFC by REC_ENT_DATE.
+Changing payor resets to Payor-level settings. Successful switches discard
+confirmed open-editor work, clear previews/caches and reload current settings.
+Failed resolution keeps the previous active context. Tier 2 continues to control
+only the diagnostic details, not access to these local synthetic selectors.
 
 ## Catalog and capabilities
 
@@ -101,8 +121,12 @@ the normal UI.
 
 ## Preview and apply
 
-Each supported editor lazily calls `POST /api/config/current` once for its
-payor/plan/field context. The Oracle-resolved effective configuration is shown
+The main page calls `POST /api/config/overview` for its payor/plan context after
+Line of Business is loaded. Boxes 39–41, 77, 80, and 81 display concise effective
+configuration summaries. Editors share these cached current responses; a failed
+field can retry through its existing current endpoint when opened. Loading and
+unavailable states are shown independently, and late responses cannot replace
+newer cached state. The Oracle-resolved effective configuration is shown
 as **Current configuration**, and the controls initialize from it. Changes are
 shown separately as **Proposed configuration** before the editor follows
 Preview → Apply. Service Facility remains one request even though Oracle owns

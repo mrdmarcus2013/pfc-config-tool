@@ -1,5 +1,8 @@
 # PFC Configuration Tool
 
+Payor and plan dropdowns, plan inheritance, and additive synthetic fixtures are
+documented in [Payor plan configuration](docs/PAYOR_PLAN_CONFIGURATION.md).
+
 Standalone production validation is governed by
 [`docs/PRODUCTION_DATABASE_BOUNDARY.md`](docs/PRODUCTION_DATABASE_BOUNDARY.md).
 Every file under `database/production_tests/` must pass the automated boundary
@@ -53,7 +56,9 @@ The initial API surface is:
 
 - `GET /api/health`
 - `GET /api/options`
+- `GET /api/support/payor-contexts`
 - `POST /api/config/current`
+- `POST /api/config/context`
 - `POST /api/config/preview`
 - `POST /api/config/apply`
 - `POST /api/config/line-of-business/current`
@@ -118,6 +123,18 @@ returns the effective public option plus a small user-oriented display model.
 It does not accept an audit user or client-selected Oracle target. Current-state
 reads roll back and never commit; inherited sources and payor overrides are
 resolved by Oracle.
+
+`POST /api/config/context` accepts only `payor_guid` and nullable `plan_guid`.
+It uses the same Oracle PFC resolver and returns the selected payor, plan, PFC,
+billing form, form-template, and user-form-template identifiers for Tier 2
+diagnostics. It is read-only and does not accept audit data.
+
+`GET /api/support/payor-contexts` supplies the Tier 2 selector with eligible
+synthetic payor/plan pairs. The local POC endpoint is deliberately restricted
+to `SYN-*` payors. Selecting an item still calls the authoritative context
+resolver; the client cannot independently choose a PFC or template GUID.
+Production payor discovery requires host-authenticated Tier 2 authorization
+and is outside this synthetic endpoint's scope.
 
 Clients must preview a change before applying it. APPLY requires the state hash
 returned by PREVIEW for the same configuration context and option. The

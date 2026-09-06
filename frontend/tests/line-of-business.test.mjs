@@ -50,6 +50,6 @@ test("page contains initial-save locking and two-stage all-plan reset wording", 
   assert.match(source, /This applies to all plans under this payor/);
   assert.match(source, /Confirm Reset/);
   assert.match(source, /Reset Fields and Change to/);
-  assert.match(source, /currentConfigurationCache\.clear\(\)/);
+  assert.match(source, /clearCurrentConfigurations\(\)/);
   assert.doesNotMatch(source.replace(/SUPPORT_DEVELOPER_MODE[\s\S]*?details>/g, ""), />HER<|>HEF</);
 });

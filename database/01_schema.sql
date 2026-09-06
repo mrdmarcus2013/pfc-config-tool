@@ -133,3 +133,16 @@ CREATE TABLE hcfa_electronic_fields (
     CONSTRAINT fk_hef_her FOREIGN KEY (electronic_rec_guid)
         REFERENCES hcfa_electronic_records (electronic_rec_guid)
 );
+
+/* Local tool metadata for the named synthetic inheritance profiles. */
+CREATE TABLE pfc_config_form_templates (
+    form_template_guid VARCHAR2(36) PRIMARY KEY,
+    template_name VARCHAR2(128) NOT NULL UNIQUE
+);
+CREATE TABLE pfc_config_user_templates (
+    user_form_template_guid VARCHAR2(36) PRIMARY KEY,
+    template_name VARCHAR2(128) NOT NULL UNIQUE,
+    form_template_guid VARCHAR2(36),
+    CONSTRAINT fk_user_template_form FOREIGN KEY (form_template_guid)
+        REFERENCES pfc_config_form_templates(form_template_guid)
+);

@@ -1,4 +1,21 @@
 CREATE OR REPLACE PACKAGE BODY pfc_config_internal AS
+
+    FUNCTION owner_json(p_her_guid IN VARCHAR2, p_target IN VARCHAR2) RETURN VARCHAR2 IS
+        l_json VARCHAR2(4000);
+    BEGIN
+        SELECT JSON_OBJECT(
+            'target' VALUE p_target,
+            'level' VALUE CASE WHEN payor_guid IS NOT NULL AND plan_guid IS NOT NULL THEN 'PAYOR_PLAN'
+                WHEN payor_guid IS NOT NULL THEN 'PAYOR'
+                WHEN user_form_template_guid IS NOT NULL THEN 'USER_TEMPLATE'
+                WHEN form_template_guid IS NOT NULL THEN 'FORM_TEMPLATE'
+                ELSE 'BILLING_FORM' END,
+            'identifier' VALUE COALESCE(plan_guid, payor_guid, user_form_template_guid,
+                form_template_guid, billing_form_code))
+        INTO l_json FROM hcfa_electronic_records WHERE electronic_rec_guid = p_her_guid;
+        RETURN l_json;
+    END owner_json;
+
     FUNCTION her_satisfies_safety_invariants (
         p_sto_proc_name IN hcfa_electronic_records.sto_proc_name%TYPE,
         p_mandatory_ind IN hcfa_electronic_records.mandatory_ind%TYPE
@@ -33,7 +50,7 @@ CREATE OR REPLACE PACKAGE BODY pfc_config_internal AS
         ) THEN
             RAISE_APPLICATION_ERROR(
                 c_err_unsafe_source,
-                'The inherited claim configuration violates the mandatory-record rule; correct the template or billing-form source.'
+                'The inherited claim configuration violates the mandatory-record rule; correct the inherited payor, template or billing-form source.'
             );
         END IF;
     END assert_inherited_her_safe;
@@ -45,7 +62,30 @@ CREATE OR REPLACE PACKAGE BODY pfc_config_internal AS
     )
     IS
         l_newest_count PLS_INTEGER := 0;
+        l_invalid_count PLS_INTEGER;
     BEGIN
+        IF p_plan_guid IS NOT NULL THEN
+            SELECT COUNT(*) INTO l_invalid_count FROM pfc_config_plans
+            WHERE plan_guid = p_plan_guid AND payor_guid = p_payor_guid;
+            IF l_invalid_count <> 1 THEN
+                RAISE_APPLICATION_ERROR(-20010, 'Plan ownership does not match the selected payor.');
+            END IF;
+            SELECT COUNT(*) INTO l_invalid_count FROM pfc
+            WHERE plan_guid = p_plan_guid
+              AND (payor_guid <> p_payor_guid OR payor_guid IS NULL);
+            IF l_invalid_count > 0 THEN
+                RAISE_APPLICATION_ERROR(-20010, 'Plan ownership does not match the selected payor.');
+            END IF;
+        END IF;
+        SELECT COUNT(*) INTO l_invalid_count FROM pfc
+        WHERE payor_guid = p_payor_guid
+          AND (plan_guid = p_plan_guid OR (plan_guid IS NULL AND p_plan_guid IS NULL))
+          AND cpd_end_date > SYSDATE AND default_media_type = 'E'
+          AND type_of_bill IS NULL AND billing_form_code = '837I_5010'
+          AND rec_ent_date IS NULL;
+        IF l_invalid_count > 0 THEN
+            RAISE_APPLICATION_ERROR(-20011, 'An eligible PFC is missing its entry date.');
+        END IF;
         FOR candidate IN (
             SELECT
                 ranked_pfc.pfc_guid,
@@ -69,7 +109,7 @@ CREATE OR REPLACE PACKAGE BODY pfc_config_internal AS
                     p.cpd_start_date,
                     p.cpd_end_date,
                     DENSE_RANK() OVER (
-                        ORDER BY p.cpd_start_date DESC NULLS LAST
+                        ORDER BY p.rec_ent_date DESC NULLS LAST
                     ) AS start_date_rank
                 FROM pfc p
                 JOIN payors payor
@@ -78,12 +118,12 @@ CREATE OR REPLACE PACKAGE BODY pfc_config_internal AS
                   AND p.cpd_end_date > SYSDATE
                   AND p.default_media_type = 'E'
                   AND p.type_of_bill IS NULL
+                  AND p.billing_form_code = '837I_5010'
                   AND (
                         (p_plan_guid IS NULL AND p.plan_guid IS NULL)
                         OR
                         (p_plan_guid IS NOT NULL AND (
                             p.plan_guid = p_plan_guid
-                            OR p.plan_guid IS NULL
                         ))
                       )
             ) ranked_pfc
@@ -113,7 +153,7 @@ CREATE OR REPLACE PACKAGE BODY pfc_config_internal AS
         IF l_newest_count > 1 THEN
             RAISE_APPLICATION_ERROR(
                 c_err_pfc_start_date_tie,
-                'Multiple eligible PFC rows share the newest CPD start date.'
+                'Multiple eligible PFC rows share the newest record entry date.'
             );
         END IF;
     END resolve_pfc;

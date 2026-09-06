@@ -1,0 +1,201 @@
+{
+  "status": "PREVIEW_ONLY_NOT_APPLIED",
+  "database_fingerprint": "d7e2b5a29169b14135f166cb75f5fd58ba7c569ad5a7617d41fadf19bac51c8f",
+  "template_catalog": [
+    {
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "template_name": "Home Health"
+    },
+    {
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "template_name": "Hospice"
+    }
+  ],
+  "old_billing_form_code": "UB04",
+  "retained_billing_form_code": "837I_5010",
+  "counts": {
+    "pfc_updates": 9,
+    "her_updates": 4,
+    "her_deletions": 4,
+    "hef_deletions": 14,
+    "field_mapping_updates": 3
+  },
+  "pfc_updates": [
+    {
+      "pfc_guid": "20000000-0000-0000-0000-0000000000A1",
+      "payor_guid": "10000000-0000-0000-0000-0000000000A1",
+      "payor_name": "Synthetic PAYOR_A",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100"
+    },
+    {
+      "pfc_guid": "20000000-0000-0000-0000-0000000000A2",
+      "payor_guid": "10000000-0000-0000-0000-0000000000A2",
+      "payor_name": "Synthetic PAYOR_B",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100"
+    },
+    {
+      "pfc_guid": "20000000-0000-0000-0000-0000000000A3",
+      "payor_guid": "10000000-0000-0000-0000-0000000000A3",
+      "payor_name": "Synthetic PAYOR_C",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100"
+    },
+    {
+      "pfc_guid": "20000000-0000-0000-0000-0000000000A4",
+      "payor_guid": "10000000-0000-0000-0000-0000000000A4",
+      "payor_name": "Synthetic PAYOR_D",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100"
+    },
+    {
+      "pfc_guid": "20000000-0000-0000-0000-0000000000A5",
+      "payor_guid": "10000000-0000-0000-0000-0000000000A5",
+      "payor_name": "Synthetic PAYOR_E",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100"
+    },
+    {
+      "pfc_guid": "20000000-0000-0000-0000-0000000000A6",
+      "payor_guid": "10000000-0000-0000-0000-0000000000A6",
+      "payor_name": "Synthetic PAYOR_F",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100"
+    },
+    {
+      "pfc_guid": "20000000-0000-0000-0000-0000000000A7",
+      "payor_guid": "10000000-0000-0000-0000-0000000000A7",
+      "payor_name": "Synthetic PAYOR_G",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200"
+    },
+    {
+      "pfc_guid": "20000000-0000-0000-0000-0000000000B7",
+      "payor_guid": "10000000-0000-0000-0000-0000000000A7",
+      "payor_name": "Synthetic PAYOR_G",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200"
+    },
+    {
+      "pfc_guid": "20000000-0000-0000-0000-0000000000A8",
+      "payor_guid": "10000000-0000-0000-0000-0000000000A8",
+      "payor_name": "Synthetic PAYOR_H",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200"
+    }
+  ],
+  "her_actions": [
+    {
+      "electronic_rec_guid": "30000000-0000-0000-0000-000000000001",
+      "record_type_code": "B2000A0030PRV080",
+      "dependent_hef_count": 4,
+      "action": "DELETE_DUPLICATE_HER_AND_HEFS",
+      "retained_electronic_rec_guid": "30000000-0000-0000-0000-00000000D081",
+      "descriptive_differences": {
+        "notes": {
+          "removed": "Synthetic billing-form-level PRV source",
+          "retained": "Synthetic 837I_5010 UI demo source"
+        }
+      }
+    },
+    {
+      "electronic_rec_guid": "30000000-0000-0000-0000-0000000000F1",
+      "record_type_code": "B2000A0030PRV080",
+      "dependent_hef_count": 4,
+      "action": "UPDATE_BILLING_FORM_CODE"
+    },
+    {
+      "electronic_rec_guid": "31000000-0000-0000-0000-000000000001",
+      "record_type_code": "D2310E2500NM1343",
+      "dependent_hef_count": 5,
+      "action": "DELETE_DUPLICATE_HER_AND_HEFS",
+      "retained_electronic_rec_guid": "31000000-0000-0000-0000-00000000D771",
+      "descriptive_differences": {
+        "notes": {
+          "removed": "Synthetic billing-form NM1 source",
+          "retained": "Synthetic 837I_5010 UI demo source"
+        }
+      }
+    },
+    {
+      "electronic_rec_guid": "31000000-0000-0000-0000-000000000002",
+      "record_type_code": "D2310E2650N3346",
+      "dependent_hef_count": 2,
+      "action": "DELETE_DUPLICATE_HER_AND_HEFS",
+      "retained_electronic_rec_guid": "31000000-0000-0000-0000-00000000D772",
+      "descriptive_differences": {
+        "notes": {
+          "removed": "Synthetic billing-form N3 source",
+          "retained": "Synthetic 837I_5010 UI demo source"
+        }
+      }
+    },
+    {
+      "electronic_rec_guid": "31000000-0000-0000-0000-000000000003",
+      "record_type_code": "D2310E2700N4347",
+      "dependent_hef_count": 3,
+      "action": "DELETE_DUPLICATE_HER_AND_HEFS",
+      "retained_electronic_rec_guid": "31000000-0000-0000-0000-00000000D773",
+      "descriptive_differences": {
+        "notes": {
+          "removed": "Synthetic billing-form N4 source",
+          "retained": "Synthetic 837I_5010 UI demo source"
+        }
+      }
+    },
+    {
+      "electronic_rec_guid": "30000000-0000-0000-0000-0000000000B1",
+      "record_type_code": "B2000A0030PRV080",
+      "dependent_hef_count": 4,
+      "action": "UPDATE_BILLING_FORM_CODE"
+    },
+    {
+      "electronic_rec_guid": "30000000-0000-0000-0000-0000000000D1",
+      "record_type_code": "B2000A0030PRV080",
+      "dependent_hef_count": 4,
+      "action": "UPDATE_BILLING_FORM_CODE"
+    },
+    {
+      "electronic_rec_guid": "30000000-0000-0000-0000-0000000000A8",
+      "record_type_code": "B2000A0030PRV080",
+      "dependent_hef_count": 4,
+      "action": "UPDATE_BILLING_FORM_CODE"
+    }
+  ],
+  "field_mapping_updates": [
+    {
+      "billing_form_code": "UB04",
+      "phys_form_field_num": "81",
+      "line_num": 1,
+      "loop_id": "PRV",
+      "field_name": "PRV01",
+      "field_number": "01",
+      "record_type_code": "B2000A0030PRV080",
+      "order_num": 1,
+      "mandatory_ind": "Y",
+      "dependency_loop": null,
+      "field_name_desc": "Synthetic provider code qualifier"
+    },
+    {
+      "billing_form_code": "UB04",
+      "phys_form_field_num": "81",
+      "line_num": 1,
+      "loop_id": "PRV",
+      "field_name": "PRV02",
+      "field_number": "02",
+      "record_type_code": "B2000A0030PRV080",
+      "order_num": 2,
+      "mandatory_ind": "Y",
+      "dependency_loop": null,
+      "field_name_desc": "Synthetic taxonomy qualifier"
+    },
+    {
+      "billing_form_code": "UB04",
+      "phys_form_field_num": "81",
+      "line_num": 1,
+      "loop_id": "PRV",
+      "field_name": "PRV03",
+      "field_number": "03",
+      "record_type_code": "B2000A0030PRV080",
+      "order_num": 3,
+      "mandatory_ind": "Y",
+      "dependency_loop": null,
+      "field_name_desc": "Synthetic provider taxonomy value"
+    }
+  ],
+  "expected_unique_payors": 26,
+  "expected_pfc_records": 27,
+  "expected_payors_per_form_template": 13
+}

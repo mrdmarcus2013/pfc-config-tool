@@ -81,7 +81,14 @@ class CurrentConfigurationDisplay(BaseModel):
     enabled: bool | None = None
 
 
+class ConfigurationOwner(BaseModel):
+    target: str
+    level: Literal["PAYOR_PLAN", "PAYOR", "USER_TEMPLATE", "FORM_TEMPLATE", "BILLING_FORM"]
+    identifier: str
+
+
 class CurrentConfigurationResponse(BaseModel):
+    configuration_owners: list[ConfigurationOwner] = Field(default_factory=list)
     status: Literal["RESOLVED"]
     field_number: SupportedFieldNumber
     capability: Literal["service-facility", "provider-taxonomy"]
@@ -89,6 +96,38 @@ class CurrentConfigurationResponse(BaseModel):
     display: CurrentConfigurationDisplay
     pfc_guid: str
     canonical: bool | None = None
+
+
+class ConfigurationContextRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    payor_guid: GuidText
+    plan_guid: GuidText | None = None
+
+
+class ConfigurationContextResponse(BaseModel):
+    status: Literal["RESOLVED"]
+    payor_guid: str
+    plan_guid: str | None
+    pfc_guid: str
+    billing_form_code: str
+    form_template_guid: str | None
+    user_form_template_guid: str | None
+
+    form_template_name: str | None = None
+    user_form_template_name: str | None = None
+
+
+class SupportPayorContext(BaseModel):
+    plan_name: str | None = None
+    payor_guid: str
+    payor_name: str
+    payor_id: str | None
+    plan_guid: str | None
+
+
+class SupportPayorContextsResponse(BaseModel):
+    contexts: list[SupportPayorContext]
 
 
 class TechnicalChange(BaseModel):
@@ -205,6 +244,7 @@ class ValueCodesApplyRequest(ValueCodesChangeRequest):
 
 
 class ValueCodesCurrentResponse(BaseModel):
+    configuration_owners: list[ConfigurationOwner] = Field(default_factory=list)
     configuration_status: Literal["RESOLVED"]
     line_of_business: LineOfBusiness
     is_default: bool
@@ -266,6 +306,7 @@ class RemarksApplyRequest(RemarksChangeRequest):
 
 
 class RemarksCurrentResponse(BaseModel):
+    configuration_owners: list[ConfigurationOwner] = Field(default_factory=list)
     configuration_status: Literal["RESOLVED"]
     line_of_business: LineOfBusiness
     mode: RemarksMode
@@ -286,3 +327,13 @@ class RemarksChangeResponse(BaseModel):
     summary: str
     pfc_guid: str | None = None
     debug_changes: list[TechnicalChange] = Field(default_factory=list)
+
+
+class ConfigurationOverviewItem(BaseModel):
+    status: Literal["RESOLVED", "UNAVAILABLE", "LOB_REQUIRED"]
+    current: CurrentConfigurationResponse | ValueCodesCurrentResponse | RemarksCurrentResponse | None = None
+    error: ErrorBody | None = None
+
+
+class ConfigurationOverviewResponse(BaseModel):
+    fields: dict[Literal["77", "81", "39-41", "80"], ConfigurationOverviewItem]

@@ -572,4 +572,344 @@ INSERT ALL
     )
 SELECT 1 FROM dual;
 
+/*
+ * Functional form/user-template sources for the synthetic hierarchy matrix.
+ * These profiles reuse only supported application configurations.  Template
+ * rows are generic sources: PAYOR_GUID, PLAN_GUID, and TYPE_OF_BILL stay null.
+ */
+DECLARE
+    TYPE t_profile IS RECORD (
+        template_code      VARCHAR2(4),
+        form_template_guid VARCHAR2(36),
+        user_template_guid VARCHAR2(36),
+        provider_option    VARCHAR2(40),
+        service_option     VARCHAR2(60),
+        value_recipe       VARCHAR2(40),
+        remarks_mode       VARCHAR2(10),
+        remarks_text       VARCHAR2(100)
+    );
+    TYPE t_profiles IS TABLE OF t_profile INDEX BY PLS_INTEGER;
+
+    l_profiles  t_profiles;
+    l_new_guid  VARCHAR2(36);
+    l_her_proc  VARCHAR2(30);
+    l_field_sto VARCHAR2(30);
+    l_field_hard VARCHAR2(128);
+
+    FUNCTION template_source_guid(
+        p_template_code IN VARCHAR2,
+        p_source_guid   IN VARCHAR2
+    ) RETURN VARCHAR2 IS
+    BEGIN
+        RETURN SUBSTR(p_source_guid, 1, 24) || p_template_code ||
+            SUBSTR(p_source_guid, -8);
+    END;
+
+    FUNCTION service_her_proc(
+        p_option      IN VARCHAR2,
+        p_record_type IN VARCHAR2
+    ) RETURN VARCHAR2 IS
+    BEGIN
+        IF p_option = 'SERVICE_FACILITY_ALWAYS_ADDRESS_YES' THEN
+            RETURN 'RETURN_1';
+        ELSIF p_option = 'SERVICE_FACILITY_ALWAYS_ADDRESS_NO' THEN
+            IF p_record_type = 'D2310E2500NM1343' THEN
+                RETURN 'RETURN_1';
+            END IF;
+            RETURN 'RETURN_0';
+        ELSIF p_option = 'SERVICE_FACILITY_CONDITIONAL_ADDRESS_YES' THEN
+            RETURN 'G_D2310E2500NM1343_COUNT';
+        ELSIF p_option = 'SERVICE_FACILITY_CONDITIONAL_ADDRESS_NO' THEN
+            IF p_record_type = 'D2310E2500NM1343' THEN
+                RETURN 'G_D2310E2500NM1343_COUNT';
+            END IF;
+            RETURN 'RETURN_0';
+        END IF;
+        RETURN 'RETURN_0';
+    END;
+
+    PROCEDURE apply_service_field(
+        p_option      IN VARCHAR2,
+        p_record_type IN VARCHAR2,
+        p_field       IN VARCHAR2,
+        p_sto         IN OUT VARCHAR2,
+        p_hard        IN OUT VARCHAR2
+    ) IS
+    BEGIN
+        IF p_option <> 'SERVICE_FACILITY_NEVER'
+           AND p_record_type = 'D2310E2500NM1343' THEN
+            CASE p_field
+                WHEN '01' THEN p_sto := NULL; p_hard := '77';
+                WHEN '02' THEN p_sto := NULL; p_hard := '2';
+                WHEN '03' THEN p_sto := 'G_ORGANIZATION_NAME'; p_hard := NULL;
+                WHEN '09' THEN p_sto := 'G_FACILITY_NPI'; p_hard := NULL;
+                ELSE NULL;
+            END CASE;
+        END IF;
+
+        IF p_option IN (
+            'SERVICE_FACILITY_ALWAYS_ADDRESS_YES',
+            'SERVICE_FACILITY_CONDITIONAL_ADDRESS_YES'
+        ) THEN
+            IF p_record_type = 'D2310E2650N3346' THEN
+                CASE p_field
+                    WHEN '01' THEN p_sto := 'G_CARE_LOCATION_ADDR1'; p_hard := NULL;
+                    WHEN '02' THEN p_sto := 'G_CARE_LOCATION_ADDR2'; p_hard := NULL;
+                    ELSE NULL;
+                END CASE;
+            ELSIF p_record_type = 'D2310E2700N4347' THEN
+                CASE p_field
+                    WHEN '01' THEN p_sto := 'G_CARE_LOCATION_CITY'; p_hard := NULL;
+                    WHEN '02' THEN p_sto := 'G_CARE_LOCATION_STATE'; p_hard := NULL;
+                    WHEN '03' THEN p_sto := 'G_CARE_LOCATION_ZIP'; p_hard := NULL;
+                    ELSE NULL;
+                END CASE;
+            END IF;
+        END IF;
+    END;
+
+    PROCEDURE apply_value_field(
+        p_recipe IN VARCHAR2,
+        p_field  IN VARCHAR2,
+        p_sto    IN OUT VARCHAR2,
+        p_hard   IN OUT VARCHAR2
+    ) IS
+    BEGIN
+        CASE p_recipe
+            WHEN 'HOME_HEALTH_CBSA' THEN
+                CASE p_field
+                    WHEN '012' THEN p_sto := NULL; p_hard := '61';
+                    WHEN '015' THEN p_sto := 'GET_PAT_CBSA_CODE'; p_hard := NULL;
+                    WHEN '022' THEN p_sto := 'GET_VAL_CODE'; p_hard := NULL;
+                    WHEN '025' THEN p_sto := 'GET_VAL_CODE_AMT'; p_hard := NULL;
+                    ELSE NULL;
+                END CASE;
+            WHEN 'HOME_HEALTH_CBSA_FIPS' THEN
+                CASE p_field
+                    WHEN '012' THEN p_sto := NULL; p_hard := '61';
+                    WHEN '015' THEN p_sto := 'GET_PAT_CBSA_CODE'; p_hard := NULL;
+                    WHEN '022' THEN p_sto := 'GET_FIPS_CODE'; p_hard := NULL;
+                    WHEN '025' THEN p_sto := 'GET_FIPS_CODE_VALUE'; p_hard := NULL;
+                    ELSE NULL;
+                END CASE;
+            WHEN 'HOSPICE_61_G8_VC80' THEN
+                CASE p_field
+                    WHEN '012' THEN p_sto := 'GET_CARE_LOC_CODE'; p_hard := NULL;
+                    WHEN '015' THEN p_sto := 'GET_CARE_LOC_VAL_CODE'; p_hard := NULL;
+                    WHEN '022' THEN p_sto := NULL; p_hard := '80';
+                    WHEN '025' THEN p_sto := 'GET_DISTINCT_COVERED_DAYS'; p_hard := NULL;
+                    ELSE NULL;
+                END CASE;
+            WHEN 'HOSPICE_PATIENT_VC80' THEN
+                CASE p_field
+                    WHEN '012' THEN p_sto := 'GET_VAL_CODE'; p_hard := NULL;
+                    WHEN '015' THEN p_sto := 'GET_VAL_CODE_AMT'; p_hard := NULL;
+                    WHEN '022' THEN p_sto := NULL; p_hard := '80';
+                    WHEN '025' THEN p_sto := 'GET_DISTINCT_COVERED_DAYS'; p_hard := NULL;
+                    ELSE NULL;
+                END CASE;
+            WHEN 'HOSPICE_VC80' THEN
+                CASE p_field
+                    WHEN '012' THEN p_sto := NULL; p_hard := '80';
+                    WHEN '015' THEN p_sto := 'GET_DISTINCT_COVERED_DAYS'; p_hard := NULL;
+                    WHEN '022' THEN p_sto := 'GET_VAL_CODE'; p_hard := NULL;
+                    WHEN '025' THEN p_sto := 'GET_VAL_CODE_AMT'; p_hard := NULL;
+                    ELSE NULL;
+                END CASE;
+            ELSE NULL;
+        END CASE;
+    END;
+BEGIN
+    l_profiles(1).template_code := 'A100';
+    l_profiles(1).form_template_guid :=
+        '40000000-0000-0000-0000-00000000B100';
+    l_profiles(1).provider_option := 'PROVIDER_TAXONOMY_ON';
+    l_profiles(1).service_option := 'SERVICE_FACILITY_ALWAYS_ADDRESS_YES';
+    l_profiles(1).value_recipe := 'HOME_HEALTH_CBSA';
+    l_profiles(1).remarks_mode := 'CUSTOM';
+    l_profiles(1).remarks_text := 'Form A100 template remark';
+
+    l_profiles(2).template_code := 'A200';
+    l_profiles(2).form_template_guid :=
+        '40000000-0000-0000-0000-00000000B200';
+    l_profiles(2).provider_option := 'PROVIDER_TAXONOMY_OFF';
+    l_profiles(2).service_option :=
+        'SERVICE_FACILITY_CONDITIONAL_ADDRESS_NO';
+    l_profiles(2).value_recipe := 'HOSPICE_61_G8_VC80';
+    l_profiles(2).remarks_mode := 'CUSTOM';
+    l_profiles(2).remarks_text := 'Form A200 template remark';
+
+    l_profiles(3).template_code := 'B100';
+    l_profiles(3).user_template_guid :=
+        '50000000-0000-0000-0000-00000000B100';
+    l_profiles(3).provider_option := 'PROVIDER_TAXONOMY_OFF';
+    l_profiles(3).service_option := 'SERVICE_FACILITY_ALWAYS_ADDRESS_NO';
+    l_profiles(3).value_recipe := 'HOME_HEALTH_CBSA_FIPS';
+    l_profiles(3).remarks_mode := 'CUSTOM';
+    l_profiles(3).remarks_text := 'User B100 template remark';
+
+    l_profiles(4).template_code := 'B200';
+    l_profiles(4).user_template_guid :=
+        '50000000-0000-0000-0000-00000000B200';
+    l_profiles(4).provider_option := 'PROVIDER_TAXONOMY_ON';
+    l_profiles(4).service_option :=
+        'SERVICE_FACILITY_CONDITIONAL_ADDRESS_YES';
+    l_profiles(4).value_recipe := 'HOSPICE_PATIENT_VC80';
+    l_profiles(4).remarks_mode := 'CUSTOM';
+    l_profiles(4).remarks_text := 'User B200 template remark';
+
+    l_profiles(5).template_code := 'B300';
+    l_profiles(5).user_template_guid :=
+        '50000000-0000-0000-0000-00000000B300';
+    l_profiles(5).provider_option := 'PROVIDER_TAXONOMY_ON';
+    l_profiles(5).service_option := 'SERVICE_FACILITY_NEVER';
+    l_profiles(5).value_recipe := 'HOSPICE_VC80';
+    l_profiles(5).remarks_mode := 'DEFAULT';
+
+    FOR profile_index IN 1 .. l_profiles.COUNT LOOP
+        FOR source_record IN (
+            SELECT h.*
+            FROM hcfa_electronic_records h
+            WHERE h.electronic_rec_guid IN (
+                '30000000-0000-0000-0000-00000000D081',
+                '31000000-0000-0000-0000-00000000D771',
+                '31000000-0000-0000-0000-00000000D772',
+                '31000000-0000-0000-0000-00000000D773',
+                '32000000-0000-0000-0000-000000000001',
+                '33000000-0000-0000-0000-000000000001'
+            )
+            ORDER BY h.electronic_rec_guid
+        ) LOOP
+            l_new_guid := template_source_guid(
+                l_profiles(profile_index).template_code,
+                source_record.electronic_rec_guid
+            );
+            l_her_proc := source_record.sto_proc_name;
+
+            IF source_record.record_type_code = 'B2000A0030PRV080' THEN
+                IF l_profiles(profile_index).provider_option =
+                    'PROVIDER_TAXONOMY_ON' THEN
+                    l_her_proc := 'RETURN_1';
+                ELSE
+                    l_her_proc := 'RETURN_0';
+                END IF;
+            ELSIF source_record.record_type_code IN (
+                'D2310E2500NM1343',
+                'D2310E2650N3346',
+                'D2310E2700N4347'
+            ) THEN
+                l_her_proc := service_her_proc(
+                    l_profiles(profile_index).service_option,
+                    source_record.record_type_code
+                );
+            ELSIF source_record.record_type_code = 'D23002310HI286' THEN
+                l_her_proc := 'RETURN_1';
+            ELSIF source_record.record_type_code = 'D23001900NTE182'
+                  AND l_profiles(profile_index).remarks_mode = 'CUSTOM' THEN
+                l_her_proc := 'RETURN_1';
+            END IF;
+
+            INSERT INTO hcfa_electronic_records (
+                electronic_rec_guid, loop_id, contiguity_ind,
+                billing_form_code, record_name, record_type_code,
+                record_size, mandatory_ind, req_for_claim_ind,
+                payor_type_guid, payor_guid, plan_guid, type_of_bill,
+                detail_ind, max_number, invoice_ind, form_template_guid,
+                carry_forward_ind, max_carry_forward, sto_proc_name,
+                user_form_template_guid, notes, rec_ent_date, rec_ent_user,
+                rec_mod_date, rec_mod_user, include_record_data_onclaim
+            ) VALUES (
+                l_new_guid, source_record.loop_id,
+                source_record.contiguity_ind, source_record.billing_form_code,
+                SUBSTR('Synthetic ' || l_profiles(profile_index).template_code ||
+                    ' ' || source_record.record_name, 1, 50),
+                source_record.record_type_code, source_record.record_size,
+                CASE WHEN l_her_proc = 'RETURN_1'
+                    THEN source_record.mandatory_ind ELSE 'N' END,
+                source_record.req_for_claim_ind, source_record.payor_type_guid,
+                NULL, NULL, NULL, source_record.detail_ind,
+                source_record.max_number, source_record.invoice_ind,
+                l_profiles(profile_index).form_template_guid,
+                source_record.carry_forward_ind,
+                source_record.max_carry_forward, l_her_proc,
+                l_profiles(profile_index).user_template_guid,
+                'Synthetic functional template source ' ||
+                    l_profiles(profile_index).template_code,
+                source_record.rec_ent_date, source_record.rec_ent_user,
+                source_record.rec_mod_date, source_record.rec_mod_user,
+                source_record.include_record_data_onclaim
+            );
+
+            FOR source_field IN (
+                SELECT f.*
+                FROM hcfa_electronic_fields f
+                WHERE f.electronic_rec_guid =
+                    source_record.electronic_rec_guid
+                ORDER BY f.order_num, f.field_number
+            ) LOOP
+                l_field_sto := source_field.sto_proc_name;
+                l_field_hard := source_field.hard_coded_data;
+
+                IF source_record.record_type_code IN (
+                    'D2310E2500NM1343',
+                    'D2310E2650N3346',
+                    'D2310E2700N4347'
+                ) THEN
+                    apply_service_field(
+                        l_profiles(profile_index).service_option,
+                        source_record.record_type_code,
+                        source_field.field_number,
+                        l_field_sto,
+                        l_field_hard
+                    );
+                ELSIF source_record.record_type_code = 'D23002310HI286' THEN
+                    apply_value_field(
+                        l_profiles(profile_index).value_recipe,
+                        source_field.field_number,
+                        l_field_sto,
+                        l_field_hard
+                    );
+                ELSIF source_record.record_type_code = 'D23001900NTE182'
+                      AND l_profiles(profile_index).remarks_mode = 'CUSTOM' THEN
+                    CASE source_field.field_number
+                        WHEN '00' THEN l_field_sto := NULL; l_field_hard := 'NTE';
+                        WHEN '01' THEN l_field_sto := NULL; l_field_hard := 'ADD';
+                        WHEN '02' THEN
+                            l_field_sto := NULL;
+                            l_field_hard :=
+                                l_profiles(profile_index).remarks_text;
+                        ELSE NULL;
+                    END CASE;
+                END IF;
+
+                INSERT INTO hcfa_electronic_fields (
+                    field_number, electronic_rec_guid, field_name,
+                    record_type_code, sto_proc_name, pic, field_spec,
+                    position_from, position_thru, field_name_desc,
+                    mandatory_ind, must_fit_length_ind, order_num, repeats,
+                    detail_ind, occurs_next, hard_coded_data, field_format,
+                    caps_ind, required_subelement_ind, rec_ent_date,
+                    rec_ent_user, rec_mod_date, rec_mod_user,
+                    include_data_onclaim
+                ) VALUES (
+                    source_field.field_number, l_new_guid,
+                    source_field.field_name, source_field.record_type_code,
+                    l_field_sto, source_field.pic, source_field.field_spec,
+                    source_field.position_from, source_field.position_thru,
+                    source_field.field_name_desc, source_field.mandatory_ind,
+                    source_field.must_fit_length_ind, source_field.order_num,
+                    source_field.repeats, source_field.detail_ind,
+                    source_field.occurs_next, l_field_hard,
+                    source_field.field_format, source_field.caps_ind,
+                    source_field.required_subelement_ind,
+                    source_field.rec_ent_date, source_field.rec_ent_user,
+                    source_field.rec_mod_date, source_field.rec_mod_user,
+                    source_field.include_data_onclaim
+                );
+            END LOOP;
+        END LOOP;
+    END LOOP;
+END;
+/
+
 COMMIT;

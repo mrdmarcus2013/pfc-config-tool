@@ -8,6 +8,9 @@ from fastapi.responses import JSONResponse
 from backend.app.errors import ApiError
 from backend.app.models import (
     ApplyRequest,
+    ConfigurationContextRequest,
+    ConfigurationContextResponse,
+    ConfigurationOverviewResponse,
     ConfigurationResponse,
     CurrentConfigurationRequest,
     CurrentConfigurationResponse,
@@ -27,6 +30,7 @@ from backend.app.models import (
     RemarksChangeResponse,
     RemarksCurrentRequest,
     RemarksCurrentResponse,
+    SupportPayorContextsResponse,
     ValueCodesApplyRequest,
     ValueCodesChangeRequest,
     ValueCodesChangeResponse,
@@ -41,6 +45,14 @@ app = FastAPI(title="PFC Configuration Tool API", version="0.1.0")
 
 def get_configuration_service() -> ConfigurationService:
     return ConfigurationService()
+
+
+@app.post("/api/config/overview", response_model=ConfigurationOverviewResponse)
+def configuration_overview(
+    request: ConfigurationContextRequest,
+    service: ConfigurationService = Depends(get_configuration_service),
+) -> dict[str, object]:
+    return service.overview(**request.model_dump())
 
 
 @app.exception_handler(ApiError)
@@ -61,6 +73,16 @@ def options(
     service: ConfigurationService = Depends(get_configuration_service),
 ) -> dict[str, object]:
     return service.list_options()
+
+
+@app.get(
+    "/api/support/payor-contexts",
+    response_model=SupportPayorContextsResponse,
+)
+def support_payor_contexts(
+    service: ConfigurationService = Depends(get_configuration_service),
+) -> dict[str, object]:
+    return service.list_support_payor_contexts()
 
 
 @app.post(
@@ -121,6 +143,14 @@ def current_configuration(
     service: ConfigurationService = Depends(get_configuration_service),
 ) -> dict[str, object]:
     return service.current(**request.model_dump())
+
+
+@app.post("/api/config/context", response_model=ConfigurationContextResponse)
+def configuration_context(
+    request: ConfigurationContextRequest,
+    service: ConfigurationService = Depends(get_configuration_service),
+) -> dict[str, object]:
+    return service.configuration_context(**request.model_dump())
 
 
 @app.post("/api/config/apply", response_model=ConfigurationResponse)

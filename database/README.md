@@ -1,5 +1,10 @@
 # Synthetic Oracle POC database
 
+The additive [payor plan upgrade and fixtures](../docs/PAYOR_PLAN_CONFIGURATION.md)
+add owned plans and plan-specific overrides without resetting the database.
+
+The default seed now installs the [approved configuration hierarchy](../docs/SYNTHETIC_CONFIGURATION_HIERARCHY.md): 17 HERs, 67 HEFs, two form templates and five user templates. Earlier fixture scenarios described below are available through `002_seed_legacy.sql` and `tests/run_legacy.sql`.
+
 Production-facing validation is governed by
 [`docs/PRODUCTION_DATABASE_BOUNDARY.md`](../docs/PRODUCTION_DATABASE_BOUNDARY.md).
 Local tool packages are never prerequisites for standalone MatrixCare
@@ -32,14 +37,15 @@ CONNECT your_poc_user@//localhost:1521/FREEPDB1
 @database/tests/run_all.sql
 ```
 
-To remove and recreate only the synthetic seed data while retaining the schema
-and compiled PL/SQL, run:
+To preview a local checkpoint reset while retaining compiled PL/SQL:
 
-```sql
-@database/04_reset_test_data.sql
-@database/install/002_seed.sql
-@database/tests/run_all.sql
+```powershell
+python database/run_poc.py reset
 ```
+
+After reviewing the counts, repeat with `--confirm-reset`. The reset removes
+all rows from the eight local synthetic checkpoint tables and loads the
+approved hierarchy. It rejects non-synthetic payors and non-local CLI connections.
 
 The installation exits on SQL errors and explicitly rejects invalid Script 1,
 Script 2, option-layer, or supporting package objects.
@@ -115,6 +121,36 @@ Facility NEVER/OFF. It starts with no payor HER/HEF overrides, so Provider
 Taxonomy ON and Service Facility ALWAYS/address-yes produce meaningful rebuild
 previews through the existing generic engine. No demo-specific logic exists in
 the resolver or apply procedure.
+
+## Synthetic template hierarchy matrix
+
+`SYN-HIER-01` through `SYN-HIER-09` each have a unique plan. They exercise two
+shared form templates and three user templates; a user template outranks a form
+template when both are assigned.
+
+| Payors | Winning source | Line of business |
+| --- | --- | --- |
+| `SYN-HIER-01` | Billing-form source | Home Health |
+| `SYN-HIER-02`, `SYN-HIER-03` | Form A100 | Home Health |
+| `SYN-HIER-04`, `SYN-HIER-05`, `SYN-HIER-06` | User B100 | Home Health |
+| `SYN-HIER-07` | Form A200 | Hospice |
+| `SYN-HIER-08` | User B200 over Form A200 | Hospice |
+| `SYN-HIER-09` | User B300 over Form A200 | Hospice |
+
+The functional template profiles use only registered configurations:
+
+| Template | Provider Taxonomy | Service Facility | Value Codes | Remarks |
+| --- | --- | --- | --- | --- |
+| Form A100 | On | Always, address yes | CBSA | Custom A100 text |
+| Form A200 | Off | Conditional, address no | Care location and covered days | Custom A200 text |
+| User B100 | Off | Always, address no | CBSA and FIPS | Custom B100 text |
+| User B200 | On | Conditional, address yes | Patient-entered and covered days | Custom B200 text |
+| User B300 | On | Never | Covered days | Default |
+
+Each template supplies complete, non-payor, null-plan HER/HEF sources for
+Provider Taxonomy, all three Service Facility records, Value Codes, and Remarks.
+Matching explicit previews return `NO_CHANGE`, proving the assigned template is
+the effective source rather than a placeholder GUID.
 
 ## Production-validated options
 

@@ -78,6 +78,8 @@ CREATE OR REPLACE PACKAGE BODY pfc_remarks_api AS
         p_plan_guid  IN pfc.plan_guid%TYPE DEFAULT NULL,
         p_result     OUT SYS_REFCURSOR
     ) IS
+        l_owner_guid VARCHAR2(36);
+        l_owners VARCHAR2(4000);
         l_lob pfc_remarks.t_line_of_business;
         l_default_engine t_engine_result;
         l_custom_engine t_engine_result;
@@ -120,6 +122,7 @@ CREATE OR REPLACE PACKAGE BODY pfc_remarks_api AS
             INTO l_current_guid, l_current_her_sto
             FROM hcfa_electronic_records h
             WHERE h.payor_guid = TRIM(p_payor_guid)
+              AND (h.plan_guid = p_plan_guid OR (h.plan_guid IS NULL AND p_plan_guid IS NULL))
               AND h.billing_form_code = l_default_engine.billing_form_code
               AND h.record_type_code = c_record_type_code;
 
@@ -193,6 +196,15 @@ CREATE OR REPLACE PACKAGE BODY pfc_remarks_api AS
         FROM hcfa_electronic_fields f
         WHERE f.electronic_rec_guid = l_engine.source_guid;
 
+        l_owner_guid := l_engine.source_guid;
+        IF l_engine.existing_her_count = 1 THEN
+            SELECT electronic_rec_guid INTO l_owner_guid FROM hcfa_electronic_records
+            WHERE payor_guid = TRIM(p_payor_guid)
+              AND (plan_guid = p_plan_guid OR (plan_guid IS NULL AND p_plan_guid IS NULL)) AND billing_form_code = l_engine.billing_form_code
+              AND record_type_code = 'D23001900NTE182';
+        END IF;
+        l_owners := '[' || pfc_config_internal.owner_json(l_owner_guid, 'Remarks') || ']';
+
         OPEN p_result FOR SELECT
             CAST(l_status AS VARCHAR2(40)) configuration_status,
             CAST(l_lob AS VARCHAR2(20)) line_of_business,
@@ -207,7 +219,8 @@ CREATE OR REPLACE PACKAGE BODY pfc_remarks_api AS
             CAST(l_engine.existing_her_count AS NUMBER) existing_payor_her_count,
             CAST(l_engine.existing_hef_count AS NUMBER) existing_payor_hef_count,
             CAST(l_source_hef_count AS NUMBER) source_hef_count,
-            CAST(l_engine.state_hash AS VARCHAR2(64)) state_hash
+            CAST(l_engine.state_hash AS VARCHAR2(64)) state_hash,
+            l_owners configuration_owners
         FROM dual;
     END current_configuration;
 

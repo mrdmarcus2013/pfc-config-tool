@@ -32,6 +32,21 @@ class ResultCursor:
         self.closed = True
 
 
+class QueryCursor(ResultCursor):
+    def __init__(self, columns, rows, execute_error=None):
+        super().__init__(columns, rows)
+        self.execute_error = execute_error
+        self.execute_count = 0
+        self.statement = None
+
+    def execute(self, statement, **binds):
+        self.execute_count += 1
+        self.statement = statement
+        assert binds == {}
+        if self.execute_error is not None:
+            raise self.execute_error
+
+
 class OutVar:
     def __init__(self, value):
         self._value = value
@@ -71,6 +86,29 @@ class CurrentProcedureCursor:
 
     def var(self, _type):
         return self._output
+
+    def execute(self, _statement, **binds):
+        self.execute_count += 1
+        self.binds = binds
+        if self.execute_error is not None:
+            raise self.execute_error
+
+    def close(self):
+        self.closed = True
+
+
+class ContextProcedureCursor:
+    def __init__(self, values, execute_error=None):
+        self._outputs = [OutVar(value) for value in values]
+        self._output_iterator = iter(self._outputs)
+        self.execute_error = execute_error
+        self.binds = None
+        self.execute_count = 0
+        self.closed = False
+
+    def var(self, _type, *, size):
+        assert size in (36, 50, 128)
+        return next(self._output_iterator)
 
     def execute(self, _statement, **binds):
         self.execute_count += 1
@@ -176,6 +214,30 @@ def make_current_connection(
     return Connection(CurrentProcedureCursor(result, execute_error=execute_error))
 
 
+def make_context_connection(*, execute_error=None, pfc_guid="synthetic-pfc"):
+    return Connection(ContextProcedureCursor([
+        request_kwargs()["payor_guid"],
+        "40000000-0000-0000-0000-0000000000A1",
+        pfc_guid,
+        "837I_5010",
+        "50000000-0000-0000-0000-0000000000A1",
+        "60000000-0000-0000-0000-0000000000A1",
+        "Home Health",
+        "Provider Taxonomy On",
+    ], execute_error=execute_error))
+
+
+def make_support_context_catalog_connection():
+    cursor = QueryCursor(
+        ["PAYOR_GUID", "PAYOR_NAME", "PAYOR_ID", "PLAN_GUID"],
+        [
+            ["synthetic-payor-1", "Synthetic Payor One", "SYN-ONE", None],
+            ["synthetic-payor-2", "Synthetic Payor Two", "SYN-TWO", "plan-2"],
+        ],
+    )
+    return Connection(cursor)
+
+
 def make_value_codes_current_connection():
     columns = ["CONFIGURATION_STATUS", "LINE_OF_BUSINESS", "IS_DEFAULT",
         "CBSA", "FIPS", "CARE_LOCATION_VALUE_CODE",
@@ -208,6 +270,33 @@ def test_public_capabilities_include_structured_fields_without_private_ids():
     assert fields[3] == {
         "field_number": "80", "field_label": "Remarks", "options": []
     }
+
+
+def test_support_context_catalog_is_one_synthetic_read_only_query():
+    connection = make_support_context_catalog_connection()
+
+    result = ConfigurationService(lambda: connection).list_support_payor_contexts()
+
+    assert result == {"contexts": [
+        {
+            "payor_guid": "synthetic-payor-1",
+            "payor_name": "Synthetic Payor One",
+            "payor_id": "SYN-ONE",
+            "plan_guid": None,
+        },
+        {
+            "payor_guid": "synthetic-payor-2",
+            "payor_name": "Synthetic Payor Two",
+            "payor_id": "SYN-TWO",
+            "plan_guid": "plan-2",
+            "plan_name": "Plan 1",
+        },
+    ]}
+    assert connection._cursor.execute_count == 1
+    assert "payor.payor_id LIKE 'SYN-%'" in connection._cursor.statement
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+    assert connection.closed
 
 
 def make_remarks_current_connection(mode="DEFAULT", custom_remark=None,
@@ -367,6 +456,7 @@ def test_current_provider_is_one_read_only_oracle_call():
         "display": {"mode": None, "report_address": None, "enabled": True},
         "pfc_guid": "30000000-0000-0000-0000-0000000000A1",
         "canonical": True,
+        "configuration_owners": [],
     }
     assert connection._cursor.execute_count == 1
     assert connection._cursor.binds == {
@@ -378,6 +468,49 @@ def test_current_provider_is_one_read_only_oracle_call():
     assert connection.commits == 0
     assert connection.rollbacks == 1
     assert connection.closed
+
+
+def test_configuration_context_returns_oracle_resolved_templates_read_only():
+    connection = make_context_connection()
+    service = ConfigurationService(lambda: connection)
+
+    result = service.configuration_context(
+        payor_guid=request_kwargs()["payor_guid"],
+        plan_guid="40000000-0000-0000-0000-0000000000A1",
+    )
+
+    assert result == {
+        "status": "RESOLVED",
+        "payor_guid": request_kwargs()["payor_guid"],
+        "plan_guid": "40000000-0000-0000-0000-0000000000A1",
+        "pfc_guid": "synthetic-pfc",
+        "billing_form_code": "837I_5010",
+        "form_template_guid": "50000000-0000-0000-0000-0000000000A1",
+        "user_form_template_guid": "60000000-0000-0000-0000-0000000000A1",
+        "form_template_name": "Home Health",
+        "user_form_template_name": "Provider Taxonomy On",
+    }
+    assert connection._cursor.execute_count == 1
+    assert connection._cursor.binds["payor_guid"] == request_kwargs()["payor_guid"]
+    assert connection._cursor.binds["plan_guid"] == result["plan_guid"]
+    assert "audit_user" not in connection._cursor.binds
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+    assert connection.closed
+
+
+def test_configuration_context_rejects_missing_required_oracle_output():
+    connection = make_context_connection(pfc_guid=None)
+
+    with pytest.raises(ApiError) as caught:
+        ConfigurationService(lambda: connection).configuration_context(
+            payor_guid=request_kwargs()["payor_guid"], plan_guid=None,
+        )
+
+    assert caught.value.status_code == 500
+    assert caught.value.category == "application_failure"
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
 
 
 def test_current_service_facility_maps_display_without_commit():

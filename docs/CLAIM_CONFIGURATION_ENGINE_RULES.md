@@ -6,6 +6,14 @@ These rules apply to every MatrixCare HER/HEF configuration managed by the PFC
 tool unless a more specific approved rule explicitly overrides them. The
 generic Oracle configuration engine is authoritative for cross-feature rules.
 
+## Payor plan scope
+
+[Payor plan configuration](PAYOR_PLAN_CONFIGURATION.md) defines the approved
+ownership and PFC selection rules. Effective precedence is Payor Plan, Payor
+Defined, User Template, Form Template, Billing Form. Default means zero overrides
+at the selected editing level. Plan Default preserves the null-plan payor parent.
+All counts, hashes, locks, deletes and verification must use exact editing scope.
+
 ## HER mandatory invariant
 
 If `HER.STO_PROC_NAME` is anything other than `RETURN_1`, including `NULL`,
@@ -37,12 +45,12 @@ columns.
 ## DEFAULT exception
 
 Default means exact inheritance of the complete authoritative MatrixCare
-source with zero canonical payor overrides. The tool must not normalize an
+source with zero canonical overrides at the selected level. The tool must not normalize an
 unsafe inherited source or create an override merely to repair it.
 
 If the inherited source violates a global safety invariant, Default is blocked.
 The error must identify the inherited source as invalid and require correction
-of the template or billing-form source. No repair DML is permitted on a Default
+of the inherited payor, template or billing-form source. No repair DML is permitted on a Default
 path.
 
 ## Current override safety
@@ -53,8 +61,9 @@ only when the inherited source itself is safe; otherwise Default is blocked.
 
 ## Source hierarchy
 
-The authoritative source is never another payor's configuration. Resolution
-uses a non-payor, null-plan, null-type-of-bill HER and ranks:
+The authoritative source is never another payor's configuration. Plan editing
+first inherits an applicable same-payor, null-plan HER. Otherwise, and for payor
+editing, resolution uses a non-payor, null-plan, null-type-of-bill HER and ranks:
 
 1. Matching user template.
 2. Matching form template.

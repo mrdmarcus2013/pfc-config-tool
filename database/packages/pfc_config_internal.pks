@@ -15,6 +15,8 @@ CREATE OR REPLACE PACKAGE pfc_config_internal AUTHID DEFINER AS
         cpd_end_date             pfc.cpd_end_date%TYPE
     );
 
+    FUNCTION owner_json(p_her_guid IN VARCHAR2, p_target IN VARCHAR2) RETURN VARCHAR2;
+
     PROCEDURE resolve_pfc (
         p_payor_guid IN pfc.payor_guid%TYPE,
         p_plan_guid  IN pfc.plan_guid%TYPE DEFAULT NULL,

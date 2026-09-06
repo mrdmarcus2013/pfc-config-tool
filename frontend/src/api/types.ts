@@ -1,3 +1,9 @@
+export interface ConfigurationOwner {
+  target: string;
+  level: "PAYOR_PLAN" | "PAYOR" | "USER_TEMPLATE" | "FORM_TEMPLATE" | "BILLING_FORM";
+  identifier: string;
+}
+
 import type { PublicOptionCode } from "../data/configuration-capabilities";
 
 export interface OptionItem { option_code: string; display_label: string }
@@ -23,6 +29,7 @@ export interface CurrentConfigurationDisplay {
   enabled: boolean | null;
 }
 export interface CurrentConfigurationResponse {
+  configuration_owners?: ConfigurationOwner[];
   status: "RESOLVED";
   field_number: "77" | "81";
   capability: "service-facility" | "provider-taxonomy";
@@ -30,6 +37,31 @@ export interface CurrentConfigurationResponse {
   display: CurrentConfigurationDisplay;
   pfc_guid: string;
   canonical: boolean | null;
+}
+export interface ConfigurationContextRequest {
+  payor_guid: string;
+  plan_guid: string | null;
+}
+export interface ConfigurationContextResponse {
+  status: "RESOLVED";
+  payor_guid: string;
+  plan_guid: string | null;
+  pfc_guid: string;
+  billing_form_code: string;
+  form_template_guid: string | null;
+  user_form_template_guid: string | null;
+  form_template_name?: string | null;
+  user_form_template_name?: string | null;
+}
+export interface SupportPayorContext {
+  plan_name?: string | null;
+  payor_guid: string;
+  payor_name: string;
+  payor_id: string | null;
+  plan_guid: string | null;
+}
+export interface SupportPayorContextsResponse {
+  contexts: SupportPayorContext[];
 }
 export interface TechnicalChange {
   operation_order: number;
@@ -105,6 +137,7 @@ export interface ValueCodesChangeRequest extends ValueCodesCurrentRequest {
 }
 export interface ValueCodesApplyRequest extends ValueCodesChangeRequest { expected_state_hash: string }
 export interface ValueCodesCurrentResponse {
+  configuration_owners?: ConfigurationOwner[];
   configuration_status: "RESOLVED";
   line_of_business: LineOfBusiness;
   is_default: boolean;
@@ -137,6 +170,7 @@ export interface RemarksApplyRequest extends RemarksChangeRequest {
   expected_state_hash: string;
 }
 export interface RemarksCurrentResponse {
+  configuration_owners?: ConfigurationOwner[];
   configuration_status: "RESOLVED";
   line_of_business: LineOfBusiness;
   mode: RemarksMode;
@@ -156,4 +190,14 @@ export interface RemarksChangeResponse {
   summary: string;
   pfc_guid: string | null;
   debug_changes: TechnicalChange[];
+}
+
+export interface ConfigurationOverviewResponse {
+  fields: {
+    [K in "77" | "81" | "39-41" | "80"]: {
+      status: "RESOLVED" | "UNAVAILABLE" | "LOB_REQUIRED";
+      current: (K extends "39-41" ? ValueCodesCurrentResponse : K extends "80" ? RemarksCurrentResponse : CurrentConfigurationResponse) | null;
+      error?: { category: string; message: string } | null;
+    };
+  };
 }

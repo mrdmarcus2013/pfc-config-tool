@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -116,6 +117,51 @@ BEGIN
         p_result       => :result_cursor
     );
 END;
+"""
+
+_CONTEXT_BLOCK = """
+DECLARE
+    l_resolution pfc_config_internal.t_pfc_resolution;
+BEGIN
+    pfc_config_internal.resolve_pfc(
+        p_payor_guid => :payor_guid,
+        p_plan_guid => :plan_guid,
+        p_resolution => l_resolution
+    );
+    :resolved_payor_guid := l_resolution.payor_guid;
+    :resolved_plan_guid := l_resolution.plan_guid;
+    :pfc_guid := l_resolution.pfc_guid;
+    :billing_form_code := l_resolution.billing_form_code;
+    :form_template_guid := l_resolution.form_template_guid;
+    :user_form_template_guid := l_resolution.user_form_template_guid;
+    SELECT (SELECT template_name FROM pfc_config_form_templates
+            WHERE form_template_guid = l_resolution.form_template_guid),
+           (SELECT template_name FROM pfc_config_user_templates
+            WHERE user_form_template_guid = l_resolution.user_form_template_guid)
+    INTO :form_template_name, :user_form_template_name
+    FROM dual;
+END;
+"""
+
+# The selector is intentionally limited to local synthetic POC payors. A
+# production catalog requires host-authenticated Tier 2 authorization.
+_SUPPORT_PAYOR_CONTEXTS_QUERY = """
+SELECT DISTINCT
+    payor.payor_guid,
+    payor.payor_name,
+    payor.payor_id,
+    target.plan_guid,
+    plans.plan_name
+FROM payors payor
+JOIN pfc target
+  ON target.payor_guid = payor.payor_guid
+LEFT JOIN pfc_config_plans plans ON plans.plan_guid = target.plan_guid AND plans.payor_guid = payor.payor_guid
+WHERE payor.payor_id LIKE 'SYN-%'
+  AND target.cpd_end_date > SYSDATE
+  AND target.default_media_type = 'E'
+  AND target.type_of_bill IS NULL
+  AND target.billing_form_code = '837I_5010'
+ORDER BY payor.payor_name, payor.payor_guid, target.plan_guid NULLS FIRST
 """
 
 _LOB_CURRENT_BLOCK = """
@@ -251,8 +297,47 @@ def _close_safely(resource: Any, resource_name: str) -> None:
         logger.error("Oracle %s close failed", resource_name)
 
 
+def _configuration_owners(row: dict[str, Any]) -> list[dict[str, str]]:
+    raw = row.get("configuration_owners")
+    if raw is None:
+        return []
+    try:
+        owners = json.loads(raw)
+        if not isinstance(owners, list) or not owners:
+            raise ValueError("Missing owners")
+        for owner in owners:
+            if not isinstance(owner, dict) or set(owner) != {"target", "level", "identifier"}:
+                raise ValueError("Invalid owner shape")
+            if owner["level"] not in {"PAYOR_PLAN", "PAYOR", "USER_TEMPLATE", "FORM_TEMPLATE", "BILLING_FORM"}:
+                raise ValueError("Invalid owner level")
+            if any(not isinstance(value, str) or not value.strip() for value in owner.values()):
+                raise ValueError("Invalid owner identifier")
+        return owners
+    except (ValueError, TypeError):
+        raise ApiError(500, "application_failure", "Configuration ownership could not be resolved safely.") from None
+
+
 class ConfigurationService:
     """Open one connection per call and delegate all configuration logic to Oracle."""
+
+    def overview(self, *, payor_guid: str, plan_guid: str | None) -> dict[str, Any]:
+        """Read independent field states; an unresolved field cannot hide the others."""
+        lob = self.line_of_business_current(payor_guid=payor_guid)
+        if lob["status"] != "DEFINED":
+            return {"fields": {field: {"status": "LOB_REQUIRED"} for field in ("39-41", "77", "80", "81")}}
+        readers = {
+            "39-41": lambda: self.value_codes_current(payor_guid=payor_guid, plan_guid=plan_guid),
+            "77": lambda: self.current(payor_guid=payor_guid, plan_guid=plan_guid, field_number="77"),
+            "80": lambda: self.remarks_current(payor_guid=payor_guid, plan_guid=plan_guid),
+            "81": lambda: self.current(payor_guid=payor_guid, plan_guid=plan_guid, field_number="81"),
+        }
+        fields = {}
+        for field, read in readers.items():
+            try:
+                fields[field] = {"status": "RESOLVED", "current": read()}
+            except ApiError as exc:
+                fields[field] = {"status": "UNAVAILABLE", "error": {"category": exc.category, "message": exc.message}}
+        return {"fields": fields}
 
     def __init__(
         self,
@@ -281,6 +366,78 @@ class ConfigurationService:
         # This is presentation metadata only. Oracle remains authoritative for
         # option existence, validation, target resolution, and desired state.
         return {"fields": OPTION_FIELDS}
+
+    def list_support_payor_contexts(self) -> dict[str, Any]:
+        """List selectable synthetic payor/plan pairs without changing Oracle."""
+
+        connection = None
+        cursor = None
+        try:
+            connection = self._connection_factory()
+            cursor = connection.cursor()
+            cursor.execute(_SUPPORT_PAYOR_CONTEXTS_QUERY)
+            rows = _rows_as_dicts(cursor)
+            contexts: list[dict[str, str | None]] = []
+            for row in rows:
+                payor_guid = str(row.get("payor_guid") or "").strip()
+                payor_name = str(row.get("payor_name") or "").strip()
+                if not payor_guid or not payor_name:
+                    raise ApiError(
+                        status_code=500,
+                        category="application_failure",
+                        message="The database returned an invalid payor context catalog.",
+                    )
+                contexts.append({
+                    "payor_guid": payor_guid,
+                    "payor_name": payor_name,
+                    "payor_id": (
+                        str(row["payor_id"]).strip()
+                        if row.get("payor_id") is not None else None
+                    ),
+                    **({"plan_name": row["plan_name"]} if row.get("plan_name") else {}),
+                    "plan_guid": (
+                        str(row["plan_guid"]).strip()
+                        if row.get("plan_guid") is not None else None
+                    ),
+                })
+            plan_numbers: dict[str, int] = {}
+            for context in contexts:
+                if context["plan_guid"] is not None:
+                    owner = context["payor_guid"]
+                    plan_numbers[owner] = plan_numbers.get(owner, 0) + 1
+                    context.setdefault("plan_name", f"Plan {plan_numbers[owner]}")
+            connection.rollback()
+            return {"contexts": contexts}
+        except ApiError:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise
+        except oracledb.DatabaseError as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise translate_oracle_error(exc, "support payor context catalog") from None
+        except DatabaseConfigurationError as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise ApiError(
+                status_code=503,
+                category="database_failure",
+                message="The database connection is not configured.",
+            ) from exc
+        except Exception as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            logger.error("Unexpected context catalog failure (%s)", type(exc).__name__)
+            raise ApiError(
+                status_code=500,
+                category="application_failure",
+                message="The payor context catalog could not be loaded safely.",
+            ) from None
+        finally:
+            if cursor is not None:
+                _close_safely(cursor, "support context catalog cursor")
+            if connection is not None:
+                _close_safely(connection, "support context catalog connection")
 
     def line_of_business_current(self, *, payor_guid: str) -> dict[str, Any]:
         return self._run_lob_single(
@@ -372,6 +529,7 @@ class ConfigurationService:
                 "canonical_status": str(row["canonical_status"]),
                 "display_summary": str(row["display_summary"]),
                 "pfc_guid": str(row["pfc_guid"]),
+                "configuration_owners": _configuration_owners(row),
                 "debug": {
                     "billing_form_code": row.get("billing_form_code"),
                     "source_electronic_rec_guid": row.get("source_electronic_rec_guid"),
@@ -517,6 +675,7 @@ class ConfigurationService:
                 "canonical_status": str(row["canonical_status"]),
                 "display_summary": str(row["display_summary"]),
                 "pfc_guid": str(row["pfc_guid"]),
+                "configuration_owners": _configuration_owners(row),
                 "debug": {
                     "billing_form_code": row.get("billing_form_code"),
                     "source_electronic_rec_guid": row.get(
@@ -841,6 +1000,91 @@ class ConfigurationService:
             expected_state_hash=None,
         )
 
+    def configuration_context(
+        self,
+        *,
+        payor_guid: str,
+        plan_guid: str | None,
+    ) -> dict[str, Any]:
+        """Return the exact PFC and template identifiers selected by Oracle."""
+
+        connection = None
+        cursor = None
+        try:
+            connection = self._connection_factory()
+            cursor = connection.cursor()
+            outputs = {
+                "resolved_payor_guid": cursor.var(str, size=36),
+                "resolved_plan_guid": cursor.var(str, size=36),
+                "pfc_guid": cursor.var(str, size=36),
+                "billing_form_code": cursor.var(str, size=50),
+                "form_template_guid": cursor.var(str, size=36),
+                "user_form_template_guid": cursor.var(str, size=36),
+                "form_template_name": cursor.var(str, size=128),
+                "user_form_template_name": cursor.var(str, size=128),
+            }
+            cursor.execute(
+                _CONTEXT_BLOCK,
+                payor_guid=payor_guid,
+                plan_guid=plan_guid,
+                **outputs,
+            )
+            values = {
+                name: (str(output.getvalue()).strip() if output.getvalue() is not None else None)
+                for name, output in outputs.items()
+            }
+            if not all(values[name] for name in (
+                "resolved_payor_guid", "pfc_guid", "billing_form_code",
+            )):
+                raise ApiError(
+                    status_code=500,
+                    category="application_failure",
+                    message="The database returned an invalid configuration context.",
+                )
+            response = {
+                "status": "RESOLVED",
+                "payor_guid": values["resolved_payor_guid"],
+                "plan_guid": values["resolved_plan_guid"],
+                "pfc_guid": values["pfc_guid"],
+                "billing_form_code": values["billing_form_code"],
+                "form_template_guid": values["form_template_guid"],
+                "user_form_template_guid": values["user_form_template_guid"],
+                "form_template_name": values["form_template_name"],
+                "user_form_template_name": values["user_form_template_name"],
+            }
+            connection.rollback()
+            return response
+        except ApiError:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise
+        except oracledb.DatabaseError as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise translate_oracle_error(exc, "configuration context") from None
+        except DatabaseConfigurationError as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            raise ApiError(
+                status_code=503,
+                category="database_failure",
+                message="The database connection is not configured.",
+            ) from exc
+        except Exception as exc:
+            if connection is not None:
+                _rollback_after_error(connection)
+            logger.error("Unexpected context adapter failure (%s)", type(exc).__name__)
+            raise ApiError(
+                status_code=500,
+                category="application_failure",
+                message="The configuration context could not be resolved safely.",
+            ) from None
+        finally:
+            if cursor is not None:
+                _close_safely(cursor, "context procedure cursor")
+            if connection is not None:
+                _close_safely(connection, "context connection")
+
     def current(
         self,
         *,
@@ -1092,5 +1336,6 @@ class ConfigurationService:
             "effective_option_code": option_code,
             "display": display,
             "pfc_guid": str(row["pfc_guid"]),
+            "configuration_owners": _configuration_owners(row),
             "canonical": None if canonical_value is None else canonical_value == "Y",
         }

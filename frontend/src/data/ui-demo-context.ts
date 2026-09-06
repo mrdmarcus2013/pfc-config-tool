@@ -10,7 +10,7 @@ export const UI_DEMO_LAUNCH_CONTEXT = {
 
 export const UI_DEMO_DISPLAY_CONTEXT = {
   payorName: "Synthetic UI Demo Payor",
+  payorId: "SYN-UI-DEMO",
   billingFormCode: "837I_5010",
   planName: null,
 } as const;
-

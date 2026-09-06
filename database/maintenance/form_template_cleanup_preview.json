@@ -1,0 +1,476 @@
+{
+  "status": "PREVIEW_ONLY_NOT_APPLIED",
+  "database_fingerprint": "8bd72fc6013f3f04e4b64285f43b6c3b2124eab3faadcb32b5a206972eed3e7c",
+  "templates": [
+    {
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "name": "Home Health"
+    },
+    {
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "name": "Hospice"
+    }
+  ],
+  "assignments": [
+    {
+      "payor_guid": "10000000-0000-0000-0000-00000000D002",
+      "payor_name": "Synthetic Defined LOB Payor",
+      "template_name": "Home Health",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "saved_line_of_business": "HOME_HEALTH",
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-00000000D002",
+          "old_form_template_guid": null,
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B100"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-00000000B101",
+      "payor_name": "Synthetic Hierarchy Payor 01",
+      "template_name": "Home Health",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "saved_line_of_business": "HOME_HEALTH",
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-00000000B101",
+          "old_form_template_guid": null,
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B100"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-00000000B102",
+      "payor_name": "Synthetic Hierarchy Payor 02",
+      "template_name": "Home Health",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "saved_line_of_business": "HOME_HEALTH",
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-00000000B102",
+          "old_form_template_guid": "40000000-0000-0000-0000-00000000B100",
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B100"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-00000000B103",
+      "payor_name": "Synthetic Hierarchy Payor 03",
+      "template_name": "Home Health",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "saved_line_of_business": "HOME_HEALTH",
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-00000000B103",
+          "old_form_template_guid": "40000000-0000-0000-0000-00000000B100",
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B100"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-00000000B104",
+      "payor_name": "Synthetic Hierarchy Payor 04",
+      "template_name": "Home Health",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "saved_line_of_business": "HOME_HEALTH",
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-00000000B104",
+          "old_form_template_guid": null,
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B100"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-00000000B105",
+      "payor_name": "Synthetic Hierarchy Payor 05",
+      "template_name": "Home Health",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "saved_line_of_business": "HOME_HEALTH",
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-00000000B105",
+          "old_form_template_guid": null,
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B100"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-00000000B106",
+      "payor_name": "Synthetic Hierarchy Payor 06",
+      "template_name": "Home Health",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "saved_line_of_business": "HOME_HEALTH",
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-00000000B106",
+          "old_form_template_guid": "40000000-0000-0000-0000-00000000B100",
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B100"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-00000000B107",
+      "payor_name": "Synthetic Hierarchy Payor 07",
+      "template_name": "Hospice",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "saved_line_of_business": "HOSPICE",
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-00000000B107",
+          "old_form_template_guid": "40000000-0000-0000-0000-00000000B200",
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B200"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-00000000B108",
+      "payor_name": "Synthetic Hierarchy Payor 08",
+      "template_name": "Hospice",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "saved_line_of_business": "HOSPICE",
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-00000000B108",
+          "old_form_template_guid": "40000000-0000-0000-0000-00000000B200",
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B200"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-00000000B109",
+      "payor_name": "Synthetic Hierarchy Payor 09",
+      "template_name": "Hospice",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "saved_line_of_business": "HOSPICE",
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-00000000B109",
+          "old_form_template_guid": "40000000-0000-0000-0000-00000000B200",
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B200"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-0000000000A1",
+      "payor_name": "Synthetic PAYOR_A",
+      "template_name": "Home Health",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "saved_line_of_business": "HOME_HEALTH",
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-0000000000A1",
+          "old_form_template_guid": null,
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B100"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-0000000000A2",
+      "payor_name": "Synthetic PAYOR_B",
+      "template_name": "Home Health",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "saved_line_of_business": null,
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-0000000000A2",
+          "old_form_template_guid": null,
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B100"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-0000000000A3",
+      "payor_name": "Synthetic PAYOR_C",
+      "template_name": "Home Health",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "saved_line_of_business": null,
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-0000000000A3",
+          "old_form_template_guid": "40000000-0000-0000-0000-0000000000F1",
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B100"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-0000000000A4",
+      "payor_name": "Synthetic PAYOR_D",
+      "template_name": "Home Health",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "saved_line_of_business": null,
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-0000000000A4",
+          "old_form_template_guid": null,
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B100"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-0000000000A5",
+      "payor_name": "Synthetic PAYOR_E",
+      "template_name": "Home Health",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "saved_line_of_business": null,
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-0000000000A5",
+          "old_form_template_guid": "40000000-0000-0000-0000-0000000000E1",
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B100"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-0000000000A6",
+      "payor_name": "Synthetic PAYOR_F",
+      "template_name": "Home Health",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "saved_line_of_business": null,
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-0000000000A6",
+          "old_form_template_guid": "40000000-0000-0000-0000-0000000000F1",
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B100"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-0000000000A7",
+      "payor_name": "Synthetic PAYOR_G",
+      "template_name": "Hospice",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "saved_line_of_business": null,
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-0000000000A7",
+          "old_form_template_guid": null,
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B200"
+        },
+        {
+          "pfc_guid": "20000000-0000-0000-0000-0000000000B7",
+          "old_form_template_guid": null,
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B200"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-0000000000A8",
+      "payor_name": "Synthetic PAYOR_H",
+      "template_name": "Hospice",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "saved_line_of_business": "HOSPICE",
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-0000000000A8",
+          "old_form_template_guid": null,
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B200"
+        }
+      ]
+    },
+    {
+      "payor_guid": "C1000000-0000-0000-0000-000000000002",
+      "payor_name": "Synthetic PFC Copy Different Destination",
+      "template_name": "Hospice",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "saved_line_of_business": null,
+      "pfc_updates": [
+        {
+          "pfc_guid": "C2000000-0000-0000-0000-000000000002",
+          "old_form_template_guid": "C4000000-0000-0000-0000-000000000002",
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B200"
+        }
+      ]
+    },
+    {
+      "payor_guid": "C1000000-0000-0000-0000-000000000004",
+      "payor_name": "Synthetic PFC Copy Empty Destination",
+      "template_name": "Hospice",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "saved_line_of_business": null,
+      "pfc_updates": [
+        {
+          "pfc_guid": "C2000000-0000-0000-0000-000000000004",
+          "old_form_template_guid": null,
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B200"
+        }
+      ]
+    },
+    {
+      "payor_guid": "C1000000-0000-0000-0000-000000000003",
+      "payor_name": "Synthetic PFC Copy Empty Source",
+      "template_name": "Hospice",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "saved_line_of_business": null,
+      "pfc_updates": [
+        {
+          "pfc_guid": "C2000000-0000-0000-0000-000000000003",
+          "old_form_template_guid": "C4000000-0000-0000-0000-000000000001",
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B200"
+        }
+      ]
+    },
+    {
+      "payor_guid": "C1000000-0000-0000-0000-000000000006",
+      "payor_name": "Synthetic PFC Copy Identical Destination",
+      "template_name": "Hospice",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "saved_line_of_business": null,
+      "pfc_updates": [
+        {
+          "pfc_guid": "C2000000-0000-0000-0000-000000000006",
+          "old_form_template_guid": null,
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B200"
+        }
+      ]
+    },
+    {
+      "payor_guid": "C1000000-0000-0000-0000-000000000005",
+      "payor_name": "Synthetic PFC Copy Identical Source",
+      "template_name": "Hospice",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "saved_line_of_business": null,
+      "pfc_updates": [
+        {
+          "pfc_guid": "C2000000-0000-0000-0000-000000000005",
+          "old_form_template_guid": null,
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B200"
+        }
+      ]
+    },
+    {
+      "payor_guid": "C1000000-0000-0000-0000-000000000007",
+      "payor_name": "Synthetic PFC Copy Shared Template Peer",
+      "template_name": "Hospice",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "saved_line_of_business": null,
+      "pfc_updates": [
+        {
+          "pfc_guid": "C2000000-0000-0000-0000-000000000007",
+          "old_form_template_guid": "C4000000-0000-0000-0000-000000000001",
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B200"
+        }
+      ]
+    },
+    {
+      "payor_guid": "C1000000-0000-0000-0000-000000000001",
+      "payor_name": "Synthetic PFC Copy Source",
+      "template_name": "Hospice",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "saved_line_of_business": null,
+      "pfc_updates": [
+        {
+          "pfc_guid": "C2000000-0000-0000-0000-000000000001",
+          "old_form_template_guid": "C4000000-0000-0000-0000-000000000001",
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B200"
+        }
+      ]
+    },
+    {
+      "payor_guid": "10000000-0000-0000-0000-00000000D001",
+      "payor_name": "Synthetic UI Demo Payor",
+      "template_name": "Hospice",
+      "form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "saved_line_of_business": "HOSPICE",
+      "pfc_updates": [
+        {
+          "pfc_guid": "20000000-0000-0000-0000-00000000D001",
+          "old_form_template_guid": null,
+          "new_form_template_guid": "40000000-0000-0000-0000-00000000B200"
+        }
+      ]
+    }
+  ],
+  "obsolete_form_template_guids": [
+    "40000000-0000-0000-0000-0000000000C1",
+    "40000000-0000-0000-0000-0000000000C2",
+    "40000000-0000-0000-0000-0000000000E1",
+    "40000000-0000-0000-0000-0000000000F1",
+    "C4000000-0000-0000-0000-000000000001",
+    "C4000000-0000-0000-0000-000000000002",
+    "C4000000-0000-0000-0000-000000000099"
+  ],
+  "her_actions": [
+    {
+      "electronic_rec_guid": "30000000-0000-0000-0000-0000000000E1",
+      "record_type_code": "B2000A0030PRV080",
+      "old_form_template_guid": "40000000-0000-0000-0000-0000000000E1",
+      "new_form_template_guid": null,
+      "action": "DELETE_HER_AND_HEFS",
+      "hef_count": 4
+    },
+    {
+      "electronic_rec_guid": "30000000-0000-0000-0000-0000000000F1",
+      "record_type_code": "B2000A0030PRV080",
+      "old_form_template_guid": "40000000-0000-0000-0000-0000000000F1",
+      "new_form_template_guid": "40000000-0000-0000-0000-00000000B100",
+      "action": "UPDATE_FORM_REFERENCE",
+      "hef_count": 4
+    },
+    {
+      "electronic_rec_guid": "C3000000-0000-0000-0000-000000000004",
+      "record_type_code": "SYN_COPY_PAYOR_WINS",
+      "old_form_template_guid": "C4000000-0000-0000-0000-000000000001",
+      "new_form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "action": "UPDATE_FORM_REFERENCE",
+      "hef_count": 1
+    },
+    {
+      "electronic_rec_guid": "C3000000-0000-0000-0000-000000000006",
+      "record_type_code": "SYN_COPY_USER_TMPL",
+      "old_form_template_guid": "C4000000-0000-0000-0000-000000000001",
+      "new_form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "action": "UPDATE_FORM_REFERENCE",
+      "hef_count": 1
+    },
+    {
+      "electronic_rec_guid": "C3000000-0000-0000-0000-000000000007",
+      "record_type_code": "SYN_COPY_FORM_TMPL",
+      "old_form_template_guid": "C4000000-0000-0000-0000-000000000001",
+      "new_form_template_guid": null,
+      "action": "DELETE_HER_AND_HEFS",
+      "hef_count": 1
+    },
+    {
+      "electronic_rec_guid": "C3000000-0000-0000-0000-000000000009",
+      "record_type_code": "SYN_COPY_STALE_TMPL",
+      "old_form_template_guid": "C4000000-0000-0000-0000-000000000099",
+      "new_form_template_guid": null,
+      "action": "CLEAR_UNUSED_FORM_REFERENCE",
+      "hef_count": 1
+    },
+    {
+      "electronic_rec_guid": "C3000000-0000-0000-0000-00000000000B",
+      "record_type_code": "SYN_COPY_DST_USER",
+      "old_form_template_guid": "C4000000-0000-0000-0000-000000000002",
+      "new_form_template_guid": "40000000-0000-0000-0000-00000000B200",
+      "action": "UPDATE_FORM_REFERENCE",
+      "hef_count": 1
+    },
+    {
+      "electronic_rec_guid": "C3000000-0000-0000-0000-00000000000C",
+      "record_type_code": "SYN_COPY_DST_FORM",
+      "old_form_template_guid": "C4000000-0000-0000-0000-000000000002",
+      "new_form_template_guid": null,
+      "action": "DELETE_HER_AND_HEFS",
+      "hef_count": 1
+    },
+    {
+      "electronic_rec_guid": "30000000-0000-0000-0000-0000000000C1",
+      "record_type_code": "B2000A0030PRV080",
+      "old_form_template_guid": "40000000-0000-0000-0000-0000000000C1",
+      "new_form_template_guid": null,
+      "action": "DELETE_HER_AND_HEFS",
+      "hef_count": 4
+    },
+    {
+      "electronic_rec_guid": "30000000-0000-0000-0000-0000000000C2",
+      "record_type_code": "B2000A0030PRV080",
+      "old_form_template_guid": "40000000-0000-0000-0000-0000000000C2",
+      "new_form_template_guid": null,
+      "action": "DELETE_HER_AND_HEFS",
+      "hef_count": 4
+    }
+  ]
+}

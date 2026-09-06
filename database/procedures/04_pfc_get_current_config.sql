@@ -14,6 +14,7 @@ IS
     c_err_unsupported_field   CONSTANT PLS_INTEGER := -20042;
 
     TYPE t_effective_record IS RECORD (
+        her_guid VARCHAR2(36),
         pfc_guid       pfc.pfc_guid%TYPE,
         her_sto_proc   hcfa_electronic_records.sto_proc_name%TYPE,
         her_mandatory  hcfa_electronic_records.mandatory_ind%TYPE,
@@ -21,6 +22,7 @@ IS
         hef_hard_code  hcfa_electronic_fields.hard_coded_data%TYPE
     );
 
+    l_owners VARCHAR2(4000);
     l_field_number VARCHAR2(10) := TRIM(p_field_number);
     l_pfc_guid pfc.pfc_guid%TYPE;
     l_option_code VARCHAR2(100);
@@ -168,6 +170,7 @@ IS
         END IF;
 
         IF l_payor_count = 1 THEN
+            p_effective.her_guid := l_payor_guid;
             p_effective.her_sto_proc := l_payor_her_proc;
             SELECT h.mandatory_ind INTO p_effective.her_mandatory
             FROM hcfa_electronic_records h
@@ -181,6 +184,7 @@ IS
                 );
             END IF;
         ELSE
+            p_effective.her_guid := l_source_guid;
             p_effective.her_sto_proc := l_source_her_proc;
             SELECT h.mandatory_ind INTO p_effective.her_mandatory
             FROM hcfa_electronic_records h
@@ -302,6 +306,13 @@ BEGIN
         );
     END IF;
 
+    IF l_field_number = '81' THEN
+        l_owners := '[' || pfc_config_internal.owner_json(l_prv.her_guid, 'Provider Taxonomy') || ']';
+    ELSE
+        l_owners := '[' || pfc_config_internal.owner_json(l_nm1.her_guid, 'Service facility') || ',' ||
+            pfc_config_internal.owner_json(l_n3.her_guid, 'Street address') || ',' ||
+            pfc_config_internal.owner_json(l_n4.her_guid, 'City, state and postal code') || ']';
+    END IF;
     OPEN p_result FOR
         SELECT
             CAST('RESOLVED' AS VARCHAR2(20)) AS "STATUS",
@@ -312,7 +323,8 @@ BEGIN
             CAST(l_report_address AS VARCHAR2(1)) AS "REPORT_ADDRESS",
             CAST(l_enabled AS VARCHAR2(1)) AS "ENABLED",
             CAST(l_pfc_guid AS VARCHAR2(36)) AS "PFC_GUID",
-            CAST(l_canonical AS VARCHAR2(1)) AS "IS_CANONICAL"
+            CAST(l_canonical AS VARCHAR2(1)) AS "IS_CANONICAL",
+            l_owners AS "CONFIGURATION_OWNERS"
         FROM dual;
 END pfc_get_current_config;
 /

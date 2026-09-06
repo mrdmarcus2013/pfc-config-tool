@@ -1,6 +1,9 @@
 import type {
   ApiErrorBody,
   ApplyRequest,
+  ConfigurationContextRequest,
+  ConfigurationContextResponse,
+  ConfigurationOverviewResponse,
   ConfigurationResponse,
   CurrentConfigurationRequest,
   CurrentConfigurationResponse,
@@ -18,6 +21,7 @@ import type {
   RemarksChangeResponse,
   RemarksCurrentRequest,
   RemarksCurrentResponse,
+  SupportPayorContextsResponse,
   ValueCodesApplyRequest,
   ValueCodesChangeRequest,
   ValueCodesChangeResponse,
@@ -65,7 +69,13 @@ const post = (body: object): RequestInit => ({
 });
 
 export const apiClient = {
+  overview: (body: ConfigurationContextRequest) =>
+    request<ConfigurationOverviewResponse>("/api/config/overview", post(body)),
   options: () => request<OptionsResponse>("/api/options"),
+  supportPayorContexts: () =>
+    request<SupportPayorContextsResponse>("/api/support/payor-contexts"),
+  configurationContext: (body: ConfigurationContextRequest) =>
+    request<ConfigurationContextResponse>("/api/config/context", post(body)),
   current: (body: CurrentConfigurationRequest) =>
     request<CurrentConfigurationResponse>("/api/config/current", post(body)),
   preview: (body: PreviewRequest) =>

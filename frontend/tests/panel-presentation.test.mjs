@@ -71,6 +71,14 @@ test("normal application startup does not directly dereference import.meta.env",
   assert.equal(SUPPORT_DEVELOPER_MODE, false);
 });
 
+test("payor and plan switching is available while diagnostics remain gated", () => {
+  const source = readFileSync(join(frontendRoot, "src", "App.tsx"), "utf8");
+  assert.match(source, /<ContextSelectors/);
+  assert.match(source, /SUPPORT_DEVELOPER_MODE && <details/);
+  assert.match(source, /clearCurrentConfigurations\(\)/);
+  assert.match(source, /contextRequestSequence/);
+});
+
 test("normal preview hides diagnostics while support mode renders retained technical data", () => {
   const preview = previewResponse();
   const retainedChanges = structuredClone(preview.debug_changes);

@@ -15,6 +15,7 @@ DATABASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = DATABASE_DIR.parent
 
 ACTION_SCRIPTS = {
+    "install_plans": [DATABASE_DIR / "install" / "009_plan_ownership.sql", DATABASE_DIR / "install" / "004_scripts_1_2.sql", DATABASE_DIR / "install" / "005_script_3.sql", DATABASE_DIR / "packages" / "pfc_value_codes_api.pkb", DATABASE_DIR / "packages" / "pfc_remarks_api.pkb"],
     "install": [DATABASE_DIR / "install" / "install_all.sql"],
     "prep3": [DATABASE_DIR / "install" / "005_prep_script_3.sql"],
     "install3": [
@@ -39,6 +40,8 @@ ACTION_SCRIPTS = {
         DATABASE_DIR / "install" / "007_value_codes_discovery.sql",
         DATABASE_DIR / "install" / "008_remarks.sql",
     ],
+    "reset_legacy": [DATABASE_DIR / "04_reset_test_data.sql", DATABASE_DIR / "install" / "002_seed_legacy.sql"],
+    "test_legacy": [DATABASE_DIR / "tests" / "run_legacy.sql"],
     "test": [DATABASE_DIR / "tests" / "run_all.sql"],
     "test3": [DATABASE_DIR / "tests" / "test_03_apply_option.sql"],
     "reset": [
@@ -53,7 +56,7 @@ ACTION_SCRIPTS = {
 
 PLSQL_START = re.compile(
     r"^(?:DECLARE|BEGIN|CREATE\s+OR\s+REPLACE\s+"
-    r"(?:PACKAGE(?:\s+BODY)?|PROCEDURE|FUNCTION))\b",
+    r"(?:PACKAGE(?:\s+BODY)?|PROCEDURE|FUNCTION|TRIGGER))\b",
     re.IGNORECASE,
 )
 
@@ -176,6 +179,8 @@ def print_compiler_errors(cursor: oracledb.Cursor) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=ACTION_SCRIPTS)
+    parser.add_argument("--confirm-reset", action="store_true", help="Apply a reviewed synthetic reset preview")
+    parser.add_argument("--confirm-plans", action="store_true", help="Install the reviewed local plan ownership and engine upgrade")
     args = parser.parse_args()
 
     connection: oracledb.Connection | None = None
@@ -183,6 +188,28 @@ def main() -> int:
         connection = connect()
         with connection.cursor() as cursor:
             cursor.execute("BEGIN DBMS_OUTPUT.ENABLE(NULL); END;")
+            if args.action in {"reset", "reset_legacy"}:
+                if os.environ.get("ORACLE_HOST", "").lower() not in {"localhost", "127.0.0.1", "::1"}:
+                    raise RuntimeError("Synthetic resets require a local database")
+                for table in ("PAYORS", "PFC", "PFC_CONFIG_PAYOR_CONTEXT", "HCFA_ELECTRONIC_RECORDS",
+                              "HCFA_ELECTRONIC_FIELDS", "LINKING_FORM_LU", "PFC_CONFIG_USER_TEMPLATES",
+                              "PFC_CONFIG_FORM_TEMPLATES"):
+                    cursor.execute("SELECT COUNT(*) FROM " + table)
+                    print(f"Reset preview: {table}: {cursor.fetchone()[0]} rows")
+                if not args.confirm_reset:
+                    print("No changes made. Repeat with --confirm-reset to replace these rows with the selected seed.")
+                    return 0
+
+            if args.action == "install_plans":
+                if os.environ.get("ORACLE_HOST", "").lower() not in {"localhost", "127.0.0.1", "::1"}:
+                    raise RuntimeError("Plan installation is restricted to local synthetic Oracle")
+                cursor.execute("SELECT COUNT(*) FROM payors WHERE payor_name NOT LIKE 'Synthetic %'")
+                if cursor.fetchone()[0]:
+                    raise RuntimeError("Plan installation requires exclusively synthetic payors")
+                print("Preview: install local plan ownership catalog/constraints/triggers and replace configuration routines; preserve existing configuration rows.")
+                if not args.confirm_plans:
+                    print("No changes made. Repeat with --confirm-plans after reviewing this upgrade.")
+                    return 0
             for script_path in ACTION_SCRIPTS[args.action]:
                 execute_script(cursor, script_path)
         connection.commit()

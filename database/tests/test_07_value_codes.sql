@@ -203,7 +203,8 @@ BEGIN
         'HOSPICE_61_G8_VC80_DAYS');
     l_desired := pfc_value_codes.build_desired_state(
         'HOSPICE', l_selections, l_source);
-    assert_hef('Care-location and days 61', l_desired, '012', NULL, '61');
+    assert_hef('Care-location and days code', l_desired, '012', 'GET_CARE_LOC_CODE', NULL);
+    assert_hef('Care-location and days amount', l_desired, '015', 'GET_CARE_LOC_VAL_CODE', NULL);
     assert_hef('Care-location and days 80', l_desired, '022', NULL, '80');
     assert_hef('Covered days value', l_desired, '025',
         'GET_DISTINCT_COVERED_DAYS', NULL);

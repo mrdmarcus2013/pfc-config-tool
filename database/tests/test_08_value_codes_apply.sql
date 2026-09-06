@@ -2,6 +2,7 @@ WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK
 SET SERVEROUTPUT ON
 
 DECLARE
+    l_owners VARCHAR2(4000);
     c_payor CONSTANT VARCHAR2(36) := '10000000-0000-0000-0000-00000000D002';
     c_hospice_payor CONSTANT VARCHAR2(36) := '10000000-0000-0000-0000-00000000D001';
     c_target CONSTANT VARCHAR2(20) := 'D23002310HI286';
@@ -32,7 +33,7 @@ DECLARE
         pfc_value_codes_api.current_configuration(p_payor, NULL, l_result);
         FETCH l_result INTO l_status, l_lob, l_default, l_cbsa, l_fips,
             l_care, l_patient, l_days, l_canonical, l_display, l_pfc,
-            l_form, l_source, l_her_count, l_hef_count, l_hash;
+            l_form, l_source, l_her_count, l_hef_count, l_hash, l_owners;
         CLOSE l_result;
     END;
 

@@ -905,6 +905,7 @@ IS
             l_targets(p_state_index).overlay_her;
         l_targets(p_state_index).desired_her.electronic_rec_guid := NULL;
         l_targets(p_state_index).desired_her.payor_guid := l_resolved_payor_guid;
+        l_targets(p_state_index).desired_her.plan_guid := l_resolved_plan_guid;
         l_targets(p_state_index).desired_her.payor_type_guid := l_payor_type_guid;
         l_targets(p_state_index).desired_her.carry_forward_ind := NULL;
         l_targets(p_state_index).desired_her.include_record_data_onclaim := 'Y';
@@ -975,6 +976,7 @@ IS
              l_targets(p_state_index).existing_hef_count
         FROM hcfa_electronic_records h
         WHERE h.payor_guid = l_resolved_payor_guid
+                  AND (h.plan_guid = l_resolved_plan_guid OR (h.plan_guid IS NULL AND l_resolved_plan_guid IS NULL))
           AND h.billing_form_code = l_billing_form_code
           AND h.record_type_code = l_targets(p_state_index).record_type_code;
 
@@ -983,6 +985,7 @@ IS
             SELECT * INTO l_targets(p_state_index).current_her
             FROM hcfa_electronic_records h
             WHERE h.payor_guid = l_resolved_payor_guid
+                  AND (h.plan_guid = l_resolved_plan_guid OR (h.plan_guid IS NULL AND l_resolved_plan_guid IS NULL))
               AND h.billing_form_code = l_billing_form_code
               AND h.record_type_code = l_targets(p_state_index).record_type_code;
             SELECT * BULK COLLECT INTO l_targets(p_state_index).current_hefs
@@ -1053,11 +1056,14 @@ IS
 
     PROCEDURE compute_state_hash
     IS
+        l_pfc_entry_date pfc.rec_ent_date%TYPE;
         l_temp_her  hcfa_electronic_records%ROWTYPE;
         l_temp_hefs t_hef_rows;
     BEGIN
         l_state_serial := NULL;
-        append_state('PFC_APPLY_OPTION_STATE_V3');
+        append_state('PFC_APPLY_OPTION_STATE_V4_PLAN');
+        SELECT rec_ent_date INTO l_pfc_entry_date FROM pfc WHERE pfc_guid = l_pfc_guid;
+        append_state(encoded_date(l_pfc_entry_date));
         append_state(l_option.option_code);
         append_state(l_option.display_label);
         append_state(l_option.phys_form_field_num);
@@ -1088,6 +1094,7 @@ IS
                 SELECT h.electronic_rec_guid
                 FROM hcfa_electronic_records h
                 WHERE h.payor_guid = l_resolved_payor_guid
+                  AND (h.plan_guid = l_resolved_plan_guid OR (h.plan_guid IS NULL AND l_resolved_plan_guid IS NULL))
                   AND h.billing_form_code = l_billing_form_code
                   AND h.record_type_code = l_targets(i).record_type_code
                 ORDER BY h.electronic_rec_guid
@@ -1320,6 +1327,7 @@ IS
                     JOIN hcfa_electronic_fields f
                       ON f.electronic_rec_guid = h.electronic_rec_guid
                     WHERE h.payor_guid = l_resolved_payor_guid
+                  AND (h.plan_guid = l_resolved_plan_guid OR (h.plan_guid IS NULL AND l_resolved_plan_guid IS NULL))
                       AND h.billing_form_code = l_billing_form_code
                       AND h.record_type_code = l_targets(i).record_type_code
                     ORDER BY h.electronic_rec_guid, f.order_num NULLS FIRST,
@@ -1339,6 +1347,7 @@ IS
                     SELECT h.electronic_rec_guid
                     FROM hcfa_electronic_records h
                     WHERE h.payor_guid = l_resolved_payor_guid
+                  AND (h.plan_guid = l_resolved_plan_guid OR (h.plan_guid IS NULL AND l_resolved_plan_guid IS NULL))
                       AND h.billing_form_code = l_billing_form_code
                       AND h.record_type_code = l_targets(i).record_type_code
                     ORDER BY h.electronic_rec_guid
@@ -1430,6 +1439,8 @@ IS
         FOR UPDATE;
 
         resolve_all_targets;
+        SELECT pfc_guid INTO l_lock_guid FROM pfc
+        WHERE pfc_guid = l_pfc_guid FOR UPDATE;
         FOR i IN 1 .. l_targets.COUNT LOOP
             SELECT h.electronic_rec_guid INTO l_lock_guid
             FROM hcfa_electronic_records h
@@ -1449,6 +1460,7 @@ IS
                 SELECT h.electronic_rec_guid
                 FROM hcfa_electronic_records h
                 WHERE h.payor_guid = l_resolved_payor_guid
+                  AND (h.plan_guid = l_resolved_plan_guid OR (h.plan_guid IS NULL AND l_resolved_plan_guid IS NULL))
                   AND h.billing_form_code = l_billing_form_code
                   AND h.record_type_code = l_targets(i).record_type_code
                 ORDER BY h.electronic_rec_guid
@@ -1483,6 +1495,7 @@ IS
                     FROM hcfa_electronic_records h
                     WHERE h.electronic_rec_guid = f.electronic_rec_guid
                       AND h.payor_guid = l_resolved_payor_guid
+                  AND (h.plan_guid = l_resolved_plan_guid OR (h.plan_guid IS NULL AND l_resolved_plan_guid IS NULL))
                       AND h.billing_form_code = l_billing_form_code
                       AND h.record_type_code = l_targets(i).record_type_code
                 );
@@ -1499,6 +1512,7 @@ IS
             ) THEN
                 DELETE FROM hcfa_electronic_records h
                 WHERE h.payor_guid = l_resolved_payor_guid
+                  AND (h.plan_guid = l_resolved_plan_guid OR (h.plan_guid IS NULL AND l_resolved_plan_guid IS NULL))
                   AND h.billing_form_code = l_billing_form_code
                   AND h.record_type_code = l_targets(i).record_type_code;
             END IF;

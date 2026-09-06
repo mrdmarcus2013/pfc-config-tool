@@ -74,13 +74,15 @@ The authoritative PFC resolution rules are:
 - `DEFAULT_MEDIA_TYPE = 'E'`;
 - `TYPE_OF_BILL IS NULL`;
 - a null requested plan considers only `PFC.PLAN_GUID IS NULL`;
-- a populated requested plan considers the exact plan and null-plan fallback;
-- newest `CPD_START_DATE` wins and a tied newest date fails safely; and
+- a populated requested plan considers only the exact plan, validated against its owner payor;
+- newest `REC_ENT_DATE` wins; tied newest or missing eligible entry dates fail safely; and
 - `PAYOR_TYPE_GUID` comes from `PAYORS`, not `PFC` or client input.
 
 ## Source HER resolution
 
-The authoritative source must be a non-payor HER with `PAYOR_GUID IS NULL`,
+For plan customization, the first inherited source is an applicable same-payor,
+null-plan HER. For payor customization, or absent a payor parent, the source is
+a non-payor HER with `PAYOR_GUID IS NULL`,
 `PLAN_GUID IS NULL`, and `TYPE_OF_BILL IS NULL`. Resolve by this hierarchy:
 
 1. matching USER template;
@@ -108,8 +110,13 @@ The canonical target action is:
 - `REBUILD_OVERRIDE` when desired differs from source and current payor state
   is absent, stale, duplicated, or noncanonical.
 
-DEFAULT always means the complete authoritative source and must never create a
-payor override.
+DEFAULT means complete inheritance below the selected editing level and must
+never create an override at that level. Plan cleanup must preserve null-plan
+payor records and every sibling plan.
+
+Existing standalone harnesses predate this hierarchy. They require a separate
+plan-aware update and validation before use with plan configuration. Never install
+PFC_CONFIG_PLANS or local ownership triggers in production to make them work.
 
 ## Preview hash contract
 

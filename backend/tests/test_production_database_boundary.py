@@ -39,6 +39,8 @@ READ_ONLY_SCRIPTS = {
     "08_value_codes_preview.sql",
     "10_remarks_readonly.sql",
     "11_remarks_preview.sql",
+    "13_plan_guid_relationship_readonly.sql",
+    "14_claim_config_reference_capture_readonly.sql",
 }
 ROLLBACK_ONLY_SCRIPTS = {
     "04_service_facility_apply_rollback.sql",
@@ -48,7 +50,7 @@ ROLLBACK_ONLY_SCRIPTS = {
 }
 READ_ONLY_FORBIDDEN = {
     "INSERT", "UPDATE", "DELETE", "MERGE",
-    "CREATE", "ALTER", "DROP", "TRUNCATE", "COMMIT",
+    "CREATE", "ALTER", "DROP", "TRUNCATE", "COMMIT", "SAVEPOINT",
 }
 ROLLBACK_ONLY_FORBIDDEN = {"CREATE", "ALTER", "DROP", "TRUNCATE", "COMMIT"}
 
@@ -145,6 +147,7 @@ def test_production_sql_has_no_tool_owned_dependencies_or_substitution_variables
 def test_value_codes_read_only_scripts_have_no_executable_mutation(name: str) -> None:
     sql = executable_sql((PRODUCTION_SCRIPTS / name).read_text(encoding="utf-8"))
     assert not executable_mutations_found(sql, READ_ONLY_FORBIDDEN), name
+    assert not re.search(r"\b(?:FOR\s+UPDATE|LOCK\s+TABLE)\b", sql, re.I), name
 
 
 @pytest.mark.parametrize("name", sorted(ROLLBACK_ONLY_SCRIPTS))

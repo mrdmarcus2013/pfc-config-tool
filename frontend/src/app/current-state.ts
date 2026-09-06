@@ -22,7 +22,9 @@ export const currentConfigurationRequest = (
   field_number: fieldNumber,
 });
 
-export const currentConfigurationKey = (request: CurrentConfigurationRequest): string =>
+export interface CurrentStateRequest { payor_guid: string; plan_guid: string | null; field_number: string }
+
+export const currentConfigurationKey = (request: CurrentStateRequest): string =>
   `${request.payor_guid}|${request.plan_guid ?? ""}|${request.field_number}`;
 
 export const currentOptionDiffers = (
@@ -51,41 +53,61 @@ export const selectionsFromCurrent = (
   }
 };
 
-export class CurrentConfigurationCache {
-  private readonly values = new Map<string, CurrentConfigurationResponse>();
-  private readonly pending = new Map<string, Promise<CurrentConfigurationResponse>>();
+export class CurrentConfigurationCache<T = CurrentConfigurationResponse> {
+  private readonly values = new Map<string, T>();
+  private readonly errors = new Map<string, unknown>();
+  private readonly pending = new Map<string, Promise<T>>();
+  private readonly listeners = new Set<() => void>();
 
-  async load(
-    request: CurrentConfigurationRequest,
-    loader: () => Promise<CurrentConfigurationResponse>,
-    force = false,
-  ): Promise<CurrentConfigurationResponse> {
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
+  private notify(): void { this.listeners.forEach((listener) => listener()); }
+  peek(request: CurrentStateRequest): { status: "ready"; current: T } | { status: "loading" | "error" } {
+    const key = currentConfigurationKey(request);
+    const current = this.values.get(key);
+    if (current !== undefined) return { status: "ready", current };
+    return { status: this.errors.has(key) ? "error" : "loading" };
+  }
+  async load(request: CurrentStateRequest, loader: () => Promise<T>, force = false): Promise<T> {
     const key = currentConfigurationKey(request);
     if (!force) {
       const cached = this.values.get(key);
-      if (cached) return cached;
+      if (cached !== undefined) return cached;
       const inFlight = this.pending.get(key);
       if (inFlight) return inFlight;
     }
-    const requestPromise = loader().then((response) => {
-      this.values.set(key, response);
+    this.values.delete(key);
+    this.errors.delete(key);
+    const requestPromise = Promise.resolve().then(loader).then((response) => {
+      // Invalidated requests may finish, but cannot resurrect or overwrite data.
+      if (this.pending.get(key) === requestPromise) {
+        this.values.set(key, response);
+        this.notify();
+      }
       return response;
+    }).catch((error: unknown) => {
+      if (this.pending.get(key) === requestPromise) {
+        this.errors.set(key, error);
+        this.notify();
+      }
+      throw error;
     }).finally(() => {
       if (this.pending.get(key) === requestPromise) this.pending.delete(key);
     });
     this.pending.set(key, requestPromise);
+    this.notify();
     return requestPromise;
   }
-
-  invalidate(request: CurrentConfigurationRequest): void {
+  invalidate(request: CurrentStateRequest): void {
     const key = currentConfigurationKey(request);
-    this.values.delete(key);
-    this.pending.delete(key);
+    this.values.delete(key); this.errors.delete(key); this.pending.delete(key);
+    this.notify();
   }
-
   clear(): void {
-    this.values.clear();
-    this.pending.clear();
+    this.values.clear(); this.errors.clear(); this.pending.clear();
+    this.notify();
   }
 }
 
