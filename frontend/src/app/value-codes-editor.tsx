@@ -7,7 +7,8 @@ import type { ClaimFieldCatalogEntry } from "../types/claim-field";
 import type { FrontendLaunchContext } from "../types/launch-context";
 import { valueCodesCurrentCache } from "./configuration-overview.js";
 import { ConfigurationOwnerDetails, configurationSourceStatus } from "./configuration-owner-details.js";
-import { editorActionState, previewAllowsApply, safeError, SingleFlightGate } from "./workflow.js";
+import { currentPreview, editorActionState, previewAllowsApply, safeError, SingleFlightGate } from "./workflow.js";
+import { runEditorPreview, type PreviewRecord } from "./editor-preview.js";
 import { EditorFooter } from "./editor-footer.js";
 import { ClaimFieldPanelHeader } from "./claim-field-panel-header.js";
 import {
@@ -26,7 +27,7 @@ interface ValueCodesEditorProps {
 export function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supportDeveloperMode }: ValueCodesEditorProps) {
   const [current, setCurrent] = useState<ValueCodesCurrentResponse | null>(null);
   const [selected, setSelected] = useState<ValueCodeSelections>(emptyValueCodeSelections);
-  const [previewRecord, setPreviewRecord] = useState<{ identity: string; response: ValueCodesChangeResponse } | null>(null);
+  const [previewRecord, setPreviewRecord] = useState<PreviewRecord<ValueCodesChangeResponse> | null>(null);
   const [busy, setBusy] = useState<"preview" | "apply" | null>(null);
   const [error, setError] = useState<{ category: string; message: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,7 +36,7 @@ export function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supp
   const gate = useRef(new SingleFlightGate());
   const request = { payor_guid: context.payor_guid, plan_guid: context.plan_guid };
   const identity = valueCodeSelectionIdentity(context, lineOfBusiness, selected);
-  const preview = previewRecord?.identity === identity ? previewRecord.response : null;
+  const preview = currentPreview(previewRecord, identity);
   const dirty = current !== null && !valueCodeSelectionsEqual(current.selections, selected);
   const actionState = editorActionState({ dirty, preview, busy, applyCompleted: success });
 
@@ -54,15 +55,11 @@ export function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supp
   const update = (next: ValueCodeSelections) => {
     setSelected(next); setPreviewRecord(null); setError(null); setSuccess(false); setConfirmationOpen(false);
   };
-  const runPreview = async () => {
-    if (!dirty || !gate.current.tryEnter()) return;
-    setBusy("preview"); setError(null); setSuccess(false);
-    try {
-      const response = await apiClient.valueCodesPreview({ ...request, selections: selected, audit_user: context.audit_user });
-      setPreviewRecord({ identity, response });
-    } catch (caught) { setPreviewRecord(null); setError(safeError(caught)); }
-    finally { setBusy(null); gate.current.exit(); }
-  };
+  const runPreview = () => runEditorPreview({
+    canPreview: dirty, gate: gate.current, identity,
+    request: () => apiClient.valueCodesPreview({ ...request, selections: selected, audit_user: context.audit_user }),
+    setBusy, setError, setSuccess, setPreviewRecord,
+  });
   const runApply = async () => {
     if (!dirty || !previewAllowsApply(preview) || !gate.current.tryEnter()) return;
     setBusy("apply"); setConfirmationOpen(false); setError(null);
@@ -117,4 +114,3 @@ export function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supp
       {confirmationOpen && <div className="confirmation-backdrop" role="presentation"><div className="confirmation" role="alertdialog" aria-modal="true"><h3>Apply configuration?</h3><p><strong>{field.fieldNumber} — Value Codes</strong></p><p>{summary}</p><div className="confirmation-actions"><button type="button" className="secondary-button" onClick={() => setConfirmationOpen(false)}>Cancel</button><button type="button" className="primary-button" onClick={runApply}>Apply</button></div></div></div>}
     </aside></div>;
 }
-

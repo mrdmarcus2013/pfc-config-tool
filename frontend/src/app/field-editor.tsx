@@ -20,6 +20,7 @@ import { EditorFooter } from "./editor-footer.js";
 import { ClaimFieldPanelHeader } from "./claim-field-panel-header.js";
 import { fieldEditorTitle } from "./presentation.js";
 import { PreviewResult } from "./preview-result.js";
+import { runEditorPreview, type PreviewRecord } from "./editor-preview.js";
 
 const SERVICE_MODE_LABEL: Record<ServiceFacilityMode, string> = {
   always: "Always report service facility",
@@ -27,7 +28,6 @@ const SERVICE_MODE_LABEL: Record<ServiceFacilityMode, string> = {
   never: "Never report service facility",
 };
 
-interface PreviewRecord { identity: string; response: ConfigurationResponse }
 interface FieldEditorProps {
   field: ClaimFieldCatalogEntry;
   context: FrontendLaunchContext;
@@ -39,7 +39,7 @@ export function FieldEditor({ field, context, onClose, supportDeveloperMode }: F
   const [serviceMode, setServiceMode] = useState<ServiceFacilityMode>("never");
   const [serviceAddress, setServiceAddress] = useState<ServiceFacilityAddress>("no");
   const [taxonomy, setTaxonomy] = useState<ProviderTaxonomySelection>("no");
-  const [previewRecord, setPreviewRecord] = useState<PreviewRecord | null>(null);
+  const [previewRecord, setPreviewRecord] = useState<PreviewRecord<ConfigurationResponse> | null>(null);
   const [busy, setBusy] = useState<"preview" | "apply" | null>(null);
   const [error, setError] = useState<{ category: string; message: string } | null>(null);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
@@ -123,16 +123,11 @@ export function FieldEditor({ field, context, onClose, supportDeveloperMode }: F
     setConfirmationOpen(false);
   };
 
-  const runPreview = async () => {
-    if (!dirty || !requestGate.current.tryEnter()) return;
-    setBusy("preview"); setError(null); setSuccess(false);
-    try {
-      const response = await apiClient.preview(previewRequest(context, optionCode));
-      setPreviewRecord({ identity, response });
-    } catch (caught) {
-      setPreviewRecord(null); setError(safeError(caught));
-    } finally { setBusy(null); requestGate.current.exit(); }
-  };
+  const runPreview = () => runEditorPreview({
+    canPreview: dirty, gate: requestGate.current, identity,
+    request: () => apiClient.preview(previewRequest(context, optionCode)),
+    setBusy, setError, setSuccess, setPreviewRecord,
+  });
 
   const runApply = async () => {
     if (!dirty || !previewAllowsApply(preview) || !requestGate.current.tryEnter()) return;
@@ -285,4 +280,3 @@ export function FieldEditor({ field, context, onClose, supportDeveloperMode }: F
     </div>
   );
 }
-

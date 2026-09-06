@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import oracledb
@@ -303,6 +304,63 @@ def _close_safely(resource: Any, resource_name: str) -> None:
         logger.error("Oracle %s close failed", resource_name)
 
 
+class _OracleSession:
+    """Track acquired cursors without deciding when an operation commits."""
+
+    def __init__(self, connection: Any) -> None:
+        self.connection = connection
+        self.resources: list[tuple[Any, str]] = []
+
+    def track(self, resource: Any, name: str) -> Any:
+        if resource is not None:
+            self.resources.append((resource, name))
+        return resource
+
+    def cursor(self, name: str) -> Any:
+        return self.track(self.connection.cursor(), name)
+
+
+@contextmanager
+def _oracle_operation(
+    connection_factory: Callable[[], Any],
+    *,
+    operation: str,
+    connection_name: str,
+    unexpected_log: str,
+    failure_message: str,
+) -> Iterator[_OracleSession]:
+    """Share ordinary adapters' error policy and reverse-order resource cleanup."""
+    connection = None
+    session = None
+    try:
+        connection = connection_factory()
+        session = _OracleSession(connection)
+        yield session
+    except ApiError:
+        if connection is not None:
+            _rollback_after_error(connection)
+        raise
+    except oracledb.DatabaseError as exc:
+        if connection is not None:
+            _rollback_after_error(connection)
+        raise translate_oracle_error(exc, operation) from None
+    except DatabaseConfigurationError as exc:
+        if connection is not None:
+            _rollback_after_error(connection)
+        raise ApiError(503, "database_failure", "The database connection is not configured.") from exc
+    except Exception as exc:
+        if connection is not None:
+            _rollback_after_error(connection)
+        logger.error(unexpected_log, type(exc).__name__)
+        raise ApiError(500, "application_failure", failure_message) from None
+    finally:
+        if session is not None:
+            for resource, name in reversed(session.resources):
+                _close_safely(resource, name)
+        if connection is not None:
+            _close_safely(connection, connection_name)
+
+
 def _configuration_owners(row: dict[str, Any]) -> list[dict[str, str]]:
     raw = row.get("configuration_owners")
     if raw is None:
@@ -376,11 +434,15 @@ class ConfigurationService:
     def list_support_payor_contexts(self) -> dict[str, Any]:
         """List selectable synthetic payor/plan pairs without changing Oracle."""
 
-        connection = None
-        cursor = None
-        try:
-            connection = self._connection_factory()
-            cursor = connection.cursor()
+        with _oracle_operation(
+            self._connection_factory,
+            operation="support payor context catalog",
+            connection_name="support context catalog connection",
+            unexpected_log="Unexpected context catalog failure (%s)",
+            failure_message="The payor context catalog could not be loaded safely.",
+        ) as session:
+            connection = session.connection
+            cursor = session.cursor("support context catalog cursor")
             cursor.execute(_SUPPORT_PAYOR_CONTEXTS_QUERY)
             rows = _rows_as_dicts(cursor)
             contexts: list[dict[str, str | None]] = []
@@ -414,36 +476,6 @@ class ConfigurationService:
                     context.setdefault("plan_name", f"Plan {plan_numbers[owner]}")
             connection.rollback()
             return {"contexts": contexts}
-        except ApiError:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise
-        except oracledb.DatabaseError as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise translate_oracle_error(exc, "support payor context catalog") from None
-        except DatabaseConfigurationError as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise ApiError(
-                status_code=503,
-                category="database_failure",
-                message="The database connection is not configured.",
-            ) from exc
-        except Exception as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            logger.error("Unexpected context catalog failure (%s)", type(exc).__name__)
-            raise ApiError(
-                status_code=500,
-                category="application_failure",
-                message="The payor context catalog could not be loaded safely.",
-            ) from None
-        finally:
-            if cursor is not None:
-                _close_safely(cursor, "support context catalog cursor")
-            if connection is not None:
-                _close_safely(connection, "support context catalog connection")
 
     def line_of_business_current(self, *, payor_guid: str) -> dict[str, Any]:
         return self._run_lob_single(
@@ -505,14 +537,19 @@ class ConfigurationService:
     def value_codes_current(
         self, *, payor_guid: str, plan_guid: str | None
     ) -> dict[str, Any]:
-        connection = cursor = result_cursor = None
-        try:
-            connection = self._connection_factory()
-            cursor = connection.cursor()
+        with _oracle_operation(
+            self._connection_factory,
+            operation="current Value Codes",
+            connection_name="Value Codes connection",
+            unexpected_log="Unexpected Value Codes current failure (%s)",
+            failure_message="Value Codes could not be resolved safely.",
+        ) as session:
+            connection = session.connection
+            cursor = session.cursor("Value Codes procedure cursor")
             result_out = cursor.var(oracledb.DB_TYPE_CURSOR)
             cursor.execute(_VALUE_CODES_CURRENT_BLOCK, payor_guid=payor_guid,
                            plan_guid=plan_guid, result_cursor=result_out)
-            result_cursor = result_out.getvalue()
+            result_cursor = session.track(result_out.getvalue(), "Value Codes result cursor")
             rows = _rows_as_dicts(result_cursor)
             if len(rows) != 1 or rows[0].get("configuration_status") != "RESOLVED":
                 raise ApiError(409, "current_state_unsupported",
@@ -546,23 +583,6 @@ class ConfigurationService:
             }
             connection.rollback()
             return response
-        except ApiError:
-            if connection is not None: _rollback_after_error(connection)
-            raise
-        except oracledb.DatabaseError as exc:
-            if connection is not None: _rollback_after_error(connection)
-            raise translate_oracle_error(exc, "current Value Codes") from None
-        except DatabaseConfigurationError as exc:
-            if connection is not None: _rollback_after_error(connection)
-            raise ApiError(503, "database_failure", "The database connection is not configured.") from exc
-        except Exception as exc:
-            if connection is not None: _rollback_after_error(connection)
-            logger.error("Unexpected Value Codes current failure (%s)", type(exc).__name__)
-            raise ApiError(500, "application_failure", "Value Codes could not be resolved safely.") from None
-        finally:
-            if result_cursor is not None: _close_safely(result_cursor, "Value Codes result cursor")
-            if cursor is not None: _close_safely(cursor, "Value Codes procedure cursor")
-            if connection is not None: _close_safely(connection, "Value Codes connection")
 
     def value_codes_preview(self, *, selections: dict[str, bool], **kwargs: Any) -> dict[str, Any]:
         return self._run_value_codes(selections=selections, mode="PREVIEW",
@@ -576,10 +596,15 @@ class ConfigurationService:
     def _run_value_codes(self, *, payor_guid: str, plan_guid: str | None,
                          selections: dict[str, bool], audit_user: str,
                          mode: str, expected_state_hash: str | None) -> dict[str, Any]:
-        connection = cursor = summary_cursor = changes_cursor = None
-        try:
-            connection = self._connection_factory()
-            cursor = connection.cursor()
+        with _oracle_operation(
+            self._connection_factory,
+            operation=mode.lower() + " Value Codes",
+            connection_name="Value Codes connection",
+            unexpected_log="Unexpected Value Codes adapter failure (%s)",
+            failure_message="The Value Codes operation failed safely.",
+        ) as session:
+            connection = session.connection
+            cursor = session.cursor("Value Codes procedure cursor")
             summary_out = cursor.var(oracledb.DB_TYPE_CURSOR)
             changes_out = cursor.var(oracledb.DB_TYPE_CURSOR)
             flags = {key: "Y" if selections[key] else "N" for key in (
@@ -589,7 +614,8 @@ class ConfigurationService:
                 plan_guid=plan_guid, audit_user=audit_user, operation_mode=mode,
                 expected_state_hash=expected_state_hash, summary_cursor=summary_out,
                 changes_cursor=changes_out, **flags)
-            summary_cursor = summary_out.getvalue(); changes_cursor = changes_out.getvalue()
+            summary_cursor = session.track(summary_out.getvalue(), "Value Codes summary cursor")
+            changes_cursor = session.track(changes_out.getvalue(), "Value Codes changes cursor")
             summaries = _rows_as_dicts(summary_cursor); changes = _rows_as_dicts(changes_cursor)
             if len(summaries) != 1:
                 raise ApiError(500, "application_failure", "The database returned an invalid Value Codes result.")
@@ -608,32 +634,19 @@ class ConfigurationService:
             if mode == "APPLY": connection.commit()
             else: connection.rollback()
             return response
-        except ApiError:
-            if connection is not None: _rollback_after_error(connection)
-            raise
-        except oracledb.DatabaseError as exc:
-            if connection is not None: _rollback_after_error(connection)
-            raise translate_oracle_error(exc, mode.lower() + " Value Codes") from None
-        except DatabaseConfigurationError as exc:
-            if connection is not None: _rollback_after_error(connection)
-            raise ApiError(503, "database_failure", "The database connection is not configured.") from exc
-        except Exception as exc:
-            if connection is not None: _rollback_after_error(connection)
-            logger.error("Unexpected Value Codes adapter failure (%s)", type(exc).__name__)
-            raise ApiError(500, "application_failure", "The Value Codes operation failed safely.") from None
-        finally:
-            if changes_cursor is not None: _close_safely(changes_cursor, "Value Codes changes cursor")
-            if summary_cursor is not None: _close_safely(summary_cursor, "Value Codes summary cursor")
-            if cursor is not None: _close_safely(cursor, "Value Codes procedure cursor")
-            if connection is not None: _close_safely(connection, "Value Codes connection")
 
     def remarks_current(
         self, *, payor_guid: str, plan_guid: str | None
     ) -> dict[str, Any]:
-        connection = cursor = result_cursor = None
-        try:
-            connection = self._connection_factory()
-            cursor = connection.cursor()
+        with _oracle_operation(
+            self._connection_factory,
+            operation="current Remarks",
+            connection_name="Remarks connection",
+            unexpected_log="Unexpected Remarks current failure (%s)",
+            failure_message="Remarks could not be resolved safely.",
+        ) as session:
+            connection = session.connection
+            cursor = session.cursor("Remarks procedure cursor")
             result_out = cursor.var(oracledb.DB_TYPE_CURSOR)
             cursor.execute(
                 _REMARKS_CURRENT_BLOCK,
@@ -641,7 +654,7 @@ class ConfigurationService:
                 plan_guid=plan_guid,
                 result_cursor=result_out,
             )
-            result_cursor = result_out.getvalue()
+            result_cursor = session.track(result_out.getvalue(), "Remarks result cursor")
             rows = _rows_as_dicts(result_cursor)
             if len(rows) != 1 or rows[0].get("configuration_status") != "RESOLVED":
                 raise ApiError(
@@ -697,36 +710,6 @@ class ConfigurationService:
             }
             connection.rollback()
             return response
-        except ApiError:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise
-        except oracledb.DatabaseError as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise translate_oracle_error(exc, "current Remarks") from None
-        except DatabaseConfigurationError as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise ApiError(
-                503, "database_failure", "The database connection is not configured."
-            ) from exc
-        except Exception as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            logger.error("Unexpected Remarks current failure (%s)", type(exc).__name__)
-            raise ApiError(
-                500,
-                "application_failure",
-                "Remarks could not be resolved safely.",
-            ) from None
-        finally:
-            if result_cursor is not None:
-                _close_safely(result_cursor, "Remarks result cursor")
-            if cursor is not None:
-                _close_safely(cursor, "Remarks procedure cursor")
-            if connection is not None:
-                _close_safely(connection, "Remarks connection")
 
     def remarks_preview(self, **kwargs: Any) -> dict[str, Any]:
         return self._run_remarks(
@@ -753,10 +736,15 @@ class ConfigurationService:
         operation_mode: str,
         expected_state_hash: str | None,
     ) -> dict[str, Any]:
-        connection = cursor = summary_cursor = changes_cursor = None
-        try:
-            connection = self._connection_factory()
-            cursor = connection.cursor()
+        with _oracle_operation(
+            self._connection_factory,
+            operation=operation_mode.lower() + " Remarks",
+            connection_name="Remarks connection",
+            unexpected_log="Unexpected Remarks adapter failure (%s)",
+            failure_message="The Remarks operation failed safely.",
+        ) as session:
+            connection = session.connection
+            cursor = session.cursor("Remarks procedure cursor")
             summary_out = cursor.var(oracledb.DB_TYPE_CURSOR)
             changes_out = cursor.var(oracledb.DB_TYPE_CURSOR)
             cursor.execute(
@@ -771,8 +759,8 @@ class ConfigurationService:
                 summary_cursor=summary_out,
                 changes_cursor=changes_out,
             )
-            summary_cursor = summary_out.getvalue()
-            changes_cursor = changes_out.getvalue()
+            summary_cursor = session.track(summary_out.getvalue(), "Remarks summary cursor")
+            changes_cursor = session.track(changes_out.getvalue(), "Remarks changes cursor")
             summaries = _rows_as_dicts(summary_cursor)
             changes = _rows_as_dicts(changes_cursor)
             if len(summaries) != 1:
@@ -811,40 +799,6 @@ class ConfigurationService:
             else:
                 connection.rollback()
             return response
-        except ApiError:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise
-        except oracledb.DatabaseError as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise translate_oracle_error(
-                exc, operation_mode.lower() + " Remarks"
-            ) from None
-        except DatabaseConfigurationError as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise ApiError(
-                503, "database_failure", "The database connection is not configured."
-            ) from exc
-        except Exception as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            logger.error("Unexpected Remarks adapter failure (%s)", type(exc).__name__)
-            raise ApiError(
-                500,
-                "application_failure",
-                "The Remarks operation failed safely.",
-            ) from None
-        finally:
-            if changes_cursor is not None:
-                _close_safely(changes_cursor, "Remarks changes cursor")
-            if summary_cursor is not None:
-                _close_safely(summary_cursor, "Remarks summary cursor")
-            if cursor is not None:
-                _close_safely(cursor, "Remarks procedure cursor")
-            if connection is not None:
-                _close_safely(connection, "Remarks connection")
 
     def _run_lob_single(
         self,
@@ -855,13 +809,18 @@ class ConfigurationService:
         commit: bool,
         expected_status: str,
     ) -> dict[str, Any]:
-        connection = cursor = result_cursor = None
-        try:
-            connection = self._connection_factory()
-            cursor = connection.cursor()
+        with _oracle_operation(
+            self._connection_factory,
+            operation=operation,
+            connection_name="LOB connection",
+            unexpected_log="Unexpected LOB adapter failure (%s)",
+            failure_message="The Line of Business operation failed safely.",
+        ) as session:
+            connection = session.connection
+            cursor = session.cursor("LOB procedure cursor")
             result_out = cursor.var(oracledb.DB_TYPE_CURSOR)
             cursor.execute(block, **binds, result_cursor=result_out)
-            result_cursor = result_out.getvalue()
+            result_cursor = session.track(result_out.getvalue(), "LOB result cursor")
             rows = _rows_as_dicts(result_cursor)
             if len(rows) != 1:
                 raise ApiError(500, "application_failure", "The database returned an invalid Line of Business result.")
@@ -880,23 +839,6 @@ class ConfigurationService:
             else:
                 connection.rollback()
             return response
-        except ApiError:
-            if connection is not None: _rollback_after_error(connection)
-            raise
-        except oracledb.DatabaseError as exc:
-            if connection is not None: _rollback_after_error(connection)
-            raise translate_oracle_error(exc, operation) from None
-        except DatabaseConfigurationError as exc:
-            if connection is not None: _rollback_after_error(connection)
-            raise ApiError(503, "database_failure", "The database connection is not configured.") from exc
-        except Exception as exc:
-            if connection is not None: _rollback_after_error(connection)
-            logger.error("Unexpected LOB adapter failure (%s)", type(exc).__name__)
-            raise ApiError(500, "application_failure", "The Line of Business operation failed safely.") from None
-        finally:
-            if result_cursor is not None: _close_safely(result_cursor, "LOB result cursor")
-            if cursor is not None: _close_safely(cursor, "LOB procedure cursor")
-            if connection is not None: _close_safely(connection, "LOB connection")
 
     def _run_lob_change(
         self,
@@ -906,15 +848,20 @@ class ConfigurationService:
         operation: str,
         commit: bool,
     ) -> dict[str, Any]:
-        connection = cursor = summary_cursor = targets_cursor = None
-        try:
-            connection = self._connection_factory()
-            cursor = connection.cursor()
+        with _oracle_operation(
+            self._connection_factory,
+            operation=operation,
+            connection_name="LOB connection",
+            unexpected_log="Unexpected LOB change adapter failure (%s)",
+            failure_message="The Line of Business operation failed safely.",
+        ) as session:
+            connection = session.connection
+            cursor = session.cursor("LOB procedure cursor")
             summary_out = cursor.var(oracledb.DB_TYPE_CURSOR)
             targets_out = cursor.var(oracledb.DB_TYPE_CURSOR)
             cursor.execute(block, **binds, summary_cursor=summary_out, targets_cursor=targets_out)
-            summary_cursor = summary_out.getvalue()
-            targets_cursor = targets_out.getvalue()
+            summary_cursor = session.track(summary_out.getvalue(), "LOB summary cursor")
+            targets_cursor = session.track(targets_out.getvalue(), "LOB target cursor")
             summaries = _rows_as_dicts(summary_cursor)
             targets = _rows_as_dicts(targets_cursor)
             if len(summaries) != 1:
@@ -957,24 +904,6 @@ class ConfigurationService:
             if commit: connection.commit()
             else: connection.rollback()
             return response
-        except ApiError:
-            if connection is not None: _rollback_after_error(connection)
-            raise
-        except oracledb.DatabaseError as exc:
-            if connection is not None: _rollback_after_error(connection)
-            raise translate_oracle_error(exc, operation) from None
-        except DatabaseConfigurationError as exc:
-            if connection is not None: _rollback_after_error(connection)
-            raise ApiError(503, "database_failure", "The database connection is not configured.") from exc
-        except Exception as exc:
-            if connection is not None: _rollback_after_error(connection)
-            logger.error("Unexpected LOB change adapter failure (%s)", type(exc).__name__)
-            raise ApiError(500, "application_failure", "The Line of Business operation failed safely.") from None
-        finally:
-            if targets_cursor is not None: _close_safely(targets_cursor, "LOB target cursor")
-            if summary_cursor is not None: _close_safely(summary_cursor, "LOB summary cursor")
-            if cursor is not None: _close_safely(cursor, "LOB procedure cursor")
-            if connection is not None: _close_safely(connection, "LOB connection")
 
     def preview(
         self,
@@ -1001,11 +930,15 @@ class ConfigurationService:
     ) -> dict[str, Any]:
         """Return the exact PFC and template identifiers selected by Oracle."""
 
-        connection = None
-        cursor = None
-        try:
-            connection = self._connection_factory()
-            cursor = connection.cursor()
+        with _oracle_operation(
+            self._connection_factory,
+            operation="configuration context",
+            connection_name="context connection",
+            unexpected_log="Unexpected context adapter failure (%s)",
+            failure_message="The configuration context could not be resolved safely.",
+        ) as session:
+            connection = session.connection
+            cursor = session.cursor("context procedure cursor")
             outputs = {
                 "resolved_payor_guid": cursor.var(str, size=36),
                 "resolved_plan_guid": cursor.var(str, size=36),
@@ -1047,36 +980,6 @@ class ConfigurationService:
             }
             connection.rollback()
             return response
-        except ApiError:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise
-        except oracledb.DatabaseError as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise translate_oracle_error(exc, "configuration context") from None
-        except DatabaseConfigurationError as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise ApiError(
-                status_code=503,
-                category="database_failure",
-                message="The database connection is not configured.",
-            ) from exc
-        except Exception as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            logger.error("Unexpected context adapter failure (%s)", type(exc).__name__)
-            raise ApiError(
-                status_code=500,
-                category="application_failure",
-                message="The configuration context could not be resolved safely.",
-            ) from None
-        finally:
-            if cursor is not None:
-                _close_safely(cursor, "context procedure cursor")
-            if connection is not None:
-                _close_safely(connection, "context connection")
 
     def current(
         self,
@@ -1085,12 +988,15 @@ class ConfigurationService:
         plan_guid: str | None,
         field_number: str,
     ) -> dict[str, Any]:
-        connection = None
-        cursor = None
-        result_cursor = None
-        try:
-            connection = self._connection_factory()
-            cursor = connection.cursor()
+        with _oracle_operation(
+            self._connection_factory,
+            operation="current configuration",
+            connection_name="current-state connection",
+            unexpected_log="Unexpected current-state adapter failure (%s)",
+            failure_message="The current configuration could not be resolved safely.",
+        ) as session:
+            connection = session.connection
+            cursor = session.cursor("current-state procedure cursor")
             result_out = cursor.var(oracledb.DB_TYPE_CURSOR)
             cursor.execute(
                 _CURRENT_BLOCK,
@@ -1099,7 +1005,7 @@ class ConfigurationService:
                 field_number=field_number,
                 result_cursor=result_out,
             )
-            result_cursor = result_out.getvalue()
+            result_cursor = session.track(result_out.getvalue(), "current-state result cursor")
             rows = _rows_as_dicts(result_cursor)
             if len(rows) != 1:
                 raise ApiError(
@@ -1110,38 +1016,6 @@ class ConfigurationService:
             response = self._current_response(rows[0], field_number)
             connection.rollback()
             return response
-        except ApiError:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise
-        except oracledb.DatabaseError as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise translate_oracle_error(exc, "current configuration") from None
-        except DatabaseConfigurationError as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise ApiError(
-                status_code=503,
-                category="database_failure",
-                message="The database connection is not configured.",
-            ) from exc
-        except Exception as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            logger.error("Unexpected current-state adapter failure (%s)", type(exc).__name__)
-            raise ApiError(
-                status_code=500,
-                category="application_failure",
-                message="The current configuration could not be resolved safely.",
-            ) from None
-        finally:
-            if result_cursor is not None:
-                _close_safely(result_cursor, "current-state result cursor")
-            if cursor is not None:
-                _close_safely(cursor, "current-state procedure cursor")
-            if connection is not None:
-                _close_safely(connection, "current-state connection")
 
     def apply(
         self,
@@ -1171,13 +1045,15 @@ class ConfigurationService:
         mode: str,
         expected_state_hash: str | None,
     ) -> dict[str, Any]:
-        connection = None
-        cursor = None
-        summary_cursor = None
-        changes_cursor = None
-        try:
-            connection = self._connection_factory()
-            cursor = connection.cursor()
+        with _oracle_operation(
+            self._connection_factory,
+            operation=mode.lower(),
+            connection_name="procedure connection",
+            unexpected_log=f"Unexpected {mode.lower()} adapter failure (%s)",
+            failure_message="The configuration operation failed safely.",
+        ) as session:
+            connection = session.connection
+            cursor = session.cursor("procedure cursor")
             summary_out = cursor.var(oracledb.DB_TYPE_CURSOR)
             changes_out = cursor.var(oracledb.DB_TYPE_CURSOR)
             cursor.execute(
@@ -1191,8 +1067,8 @@ class ConfigurationService:
                 summary_cursor=summary_out,
                 changes_cursor=changes_out,
             )
-            summary_cursor = summary_out.getvalue()
-            changes_cursor = changes_out.getvalue()
+            summary_cursor = session.track(summary_out.getvalue(), "summary cursor")
+            changes_cursor = session.track(changes_out.getvalue(), "changes cursor")
             summaries = _rows_as_dicts(summary_cursor)
             changes = _rows_as_dicts(changes_cursor)
 
@@ -1219,44 +1095,6 @@ class ConfigurationService:
             else:
                 connection.rollback()
             return response
-        except ApiError:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise
-        except oracledb.DatabaseError as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise translate_oracle_error(exc, mode.lower()) from None
-        except DatabaseConfigurationError as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            raise ApiError(
-                status_code=503,
-                category="database_failure",
-                message="The database connection is not configured.",
-            ) from exc
-        except Exception as exc:
-            if connection is not None:
-                _rollback_after_error(connection)
-            logger.error(
-                "Unexpected %s adapter failure (%s)",
-                mode.lower(),
-                type(exc).__name__,
-            )
-            raise ApiError(
-                status_code=500,
-                category="application_failure",
-                message="The configuration operation failed safely.",
-            ) from None
-        finally:
-            if changes_cursor is not None:
-                _close_safely(changes_cursor, "changes cursor")
-            if summary_cursor is not None:
-                _close_safely(summary_cursor, "summary cursor")
-            if cursor is not None:
-                _close_safely(cursor, "procedure cursor")
-            if connection is not None:
-                _close_safely(connection, "procedure connection")
 
     @staticmethod
     def _response(summary: dict[str, Any], changes: list[dict[str, Any]]) -> dict[str, Any]:

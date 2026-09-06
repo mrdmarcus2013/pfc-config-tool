@@ -11,6 +11,7 @@ import type { ClaimFieldCatalogEntry } from "../types/claim-field";
 import type { FrontendLaunchContext } from "../types/launch-context";
 import { ClaimFieldPanelHeader } from "./claim-field-panel-header";
 import { EditorFooter } from "./editor-footer";
+import { runEditorPreview, type PreviewRecord } from "./editor-preview.js";
 import {
   REMARKS_CUSTOM_REMARK_MAX_LENGTH,
   type RemarksIntent,
@@ -21,6 +22,7 @@ import {
   remarksRequest,
 } from "./remarks";
 import {
+  currentPreview,
   editorActionState,
   previewAllowsApply,
   safeError,
@@ -47,10 +49,7 @@ export function RemarksEditor({
     mode: "DEFAULT",
     customRemark: "",
   });
-  const [previewRecord, setPreviewRecord] = useState<{
-    identity: string;
-    response: RemarksChangeResponse;
-  } | null>(null);
+  const [previewRecord, setPreviewRecord] = useState<PreviewRecord<RemarksChangeResponse> | null>(null);
   const [busy, setBusy] = useState<"preview" | "apply" | null>(null);
   const [error, setError] = useState<{ category: string; message: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,7 +61,7 @@ export function RemarksEditor({
     plan_guid: context.plan_guid,
   };
   const identity = remarksIdentity(context, lineOfBusiness, intent);
-  const preview = previewRecord?.identity === identity ? previewRecord.response : null;
+  const preview = currentPreview(previewRecord, identity);
   const valid = remarksIntentIsValid(intent);
   const dirty = current !== null && !remarksIntentMatchesCurrent(current, intent);
   const actionState = editorActionState({
@@ -108,22 +107,11 @@ export function RemarksEditor({
     setConfirmationOpen(false);
   };
 
-  const runPreview = async () => {
-    if (!dirty || !valid || !gate.current.tryEnter()) return;
-    setBusy("preview");
-    setError(null);
-    setSuccess(false);
-    try {
-      const response = await apiClient.remarksPreview(remarksRequest(context, intent));
-      setPreviewRecord({ identity, response });
-    } catch (caught) {
-      setPreviewRecord(null);
-      setError(safeError(caught));
-    } finally {
-      setBusy(null);
-      gate.current.exit();
-    }
-  };
+  const runPreview = () => runEditorPreview({
+    canPreview: dirty && valid, gate: gate.current, identity,
+    request: () => apiClient.remarksPreview(remarksRequest(context, intent)),
+    setBusy, setError, setSuccess, setPreviewRecord,
+  });
 
   const runApply = async () => {
     if (!dirty || !valid || !previewAllowsApply(preview) || !gate.current.tryEnter()) return;
