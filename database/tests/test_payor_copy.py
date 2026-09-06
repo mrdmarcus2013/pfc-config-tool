@@ -205,3 +205,88 @@ def test_normal_plan_editing_after_copy_keeps_parent_and_unknown_settings(q):
     assert procedure_row(q,'pfc_get_current_config',[DESTINATION,DESTINATION_PLANS[1],'81'])['effective_option_code']=='PROVIDER_TAXONOMY_OFF'
     q.execute("SELECT COUNT(*) FROM hcfa_electronic_records WHERE payor_guid=:d AND record_type_code='SYN_COPY_UNKNOWN'",d=DESTINATION)
     assert q.fetchone()[0]==1
+
+
+def _unknown_copy_fields(q, guid):
+    q.execute("SELECT * FROM hcfa_electronic_fields WHERE electronic_rec_guid=:g", g=guid)
+    names = [column[0].lower() for column in q.description]
+    return [dict(zip(names, row)) for row in q.fetchall()]
+
+
+def _unknown_destination_record(q):
+    q.execute("""SELECT electronic_rec_guid FROM hcfa_electronic_records
+        WHERE payor_guid=:d AND plan_guid IS NULL AND record_type_code='SYN_COPY_UNKNOWN'""", d=DESTINATION)
+    records = q.fetchall()
+    assert len(records) == 1
+    return records[0][0]
+
+
+def _copy_with_unknown_child_multiset(q, child_count):
+    source_guid = "F4000000-0000-0000-0000-000000000001"
+    template = _unknown_copy_fields(q, source_guid)[0]
+    identical = {**template, "field_name_desc": "Synthetic identical child"}
+    distinct = {**template, "field_name_desc": "Synthetic distinct child"}
+    fields = {0: [], 1: [identical], 3: [identical, identical, distinct]}[child_count]
+    q.execute("DELETE FROM hcfa_electronic_fields WHERE electronic_rec_guid=:g", g=source_guid)
+    insert_rows(q, "HCFA_ELECTRONIC_FIELDS", fields)
+    preview = run(q)
+    run(q, "APPLY", preview["state_hash"])
+    return source_guid, _unknown_destination_record(q)
+
+
+@pytest.mark.parametrize("child_count", [0, 1, 3])
+def test_copy_child_multiset_keeps_identical_records_after_reinsertion(q, child_count):
+    source_guid, destination_guid = _copy_with_unknown_child_multiset(q, child_count)
+    canonical = run(q)
+    assert canonical["status"] == "NO_CHANGE"
+    fields = _unknown_copy_fields(q, destination_guid)
+    assert len(fields) == child_count
+    assert len(_unknown_copy_fields(q, source_guid)) == child_count
+
+    # Preserve every stored value, including audits, while reversing INSERT order.
+    before = fingerprint(read_state(q))
+    q.execute("DELETE FROM hcfa_electronic_fields WHERE electronic_rec_guid=:g", g=destination_guid)
+    insert_rows(q, "HCFA_ELECTRONIC_FIELDS", list(reversed(fields)))
+    assert fingerprint(read_state(q)) == before
+    reordered = run(q)
+    assert reordered["status"] == "NO_CHANGE"
+    assert reordered["state_hash"] == canonical["state_hash"]
+    assert reordered["records_copied"] == reordered["records_removed"] == 0
+    assert [change["action"] for change in reordered["changes"]
+            if change["record_type"] == "SYN_COPY_UNKNOWN"] == ["KEEP"]
+    assert _unknown_destination_record(q) == destination_guid
+
+
+@pytest.mark.parametrize("side", ["source", "destination"])
+def test_removing_one_identical_child_invalidates_preview_and_rebuilds_multiset(q, side):
+    source_guid, destination_guid = _copy_with_unknown_child_multiset(q, 3)
+    canonical = run(q)
+    assert canonical["status"] == "NO_CHANGE"
+    changed_guid = source_guid if side == "source" else destination_guid
+    q.execute("""DELETE FROM hcfa_electronic_fields WHERE electronic_rec_guid=:g
+        AND field_name_desc='Synthetic identical child' AND ROWNUM=1""", g=changed_guid)
+    assert q.rowcount == 1
+    assert sum(field["field_name_desc"] == "Synthetic identical child"
+               for field in _unknown_copy_fields(q, changed_guid)) == 1
+
+    changed = run(q)
+    assert changed["status"] == "READY" and changed["state_hash"] != canonical["state_hash"]
+    assert changed["records_copied"] == changed["records_removed"] == 1
+    assert {change["action"] for change in changed["changes"]
+            if change["record_type"] == "SYN_COPY_UNKNOWN"} == {"REMOVE", "COPY"}
+    before = fingerprint(read_state(q))
+    with pytest.raises(oracledb.DatabaseError, match="20106"):
+        run(q, "APPLY", canonical["state_hash"])
+    assert fingerprint(read_state(q)) == before
+
+    run(q, "APPLY", changed["state_hash"])
+    rebuilt_guid = _unknown_destination_record(q)
+    assert rebuilt_guid != destination_guid
+    omitted = {"electronic_rec_guid", "rec_ent_date", "rec_ent_user", "rec_mod_date", "rec_mod_user"}
+    source_fields = [{key: value for key, value in field.items() if key not in omitted}
+                     for field in _unknown_copy_fields(q, source_guid)]
+    destination_fields = [{key: value for key, value in field.items() if key not in omitted}
+                          for field in _unknown_copy_fields(q, rebuilt_guid)]
+    assert len(destination_fields) == (2 if side == "source" else 3)
+    assert fingerprint({"fields": destination_fields}) == fingerprint({"fields": source_fields})
+    assert run(q)["status"] == "NO_CHANGE"

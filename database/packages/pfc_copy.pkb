@@ -3,6 +3,47 @@ CREATE OR REPLACE PACKAGE BODY pfc_copy AS
     TYPE t_set IS TABLE OF VARCHAR2(36) INDEX BY VARCHAR2(20);
     TYPE t_contexts IS TABLE OF pfc_config_internal.t_pfc_resolution INDEX BY PLS_INTEGER;
 
+    -- Dense, non-null SHA-256 digest arrays only. Stable merging preserves
+    -- duplicate order and the existing PL/SQL string comparison semantics.
+    PROCEDURE sort_digests(p_values IN OUT NOCOPY t_strings) IS
+        l_buffer t_strings;
+        l_count PLS_INTEGER := p_values.COUNT;
+        l_width PLS_INTEGER := 1;
+        l_start PLS_INTEGER;
+        l_middle PLS_INTEGER;
+        l_end PLS_INTEGER;
+        l_left PLS_INTEGER;
+        l_right PLS_INTEGER;
+    BEGIN
+        WHILE l_width < l_count LOOP
+            l_start := 1;
+            WHILE l_start <= l_count LOOP
+                l_middle := LEAST(l_start + l_width - 1, l_count);
+                l_end := LEAST(l_start + 2 * l_width - 1, l_count);
+                l_left := l_start;
+                l_right := l_middle + 1;
+                FOR i IN l_start..l_end LOOP
+                    IF l_left > l_middle THEN
+                        l_buffer(i) := p_values(l_right);
+                        l_right := l_right + 1;
+                    ELSIF l_right > l_end THEN
+                        l_buffer(i) := p_values(l_left);
+                        l_left := l_left + 1;
+                    ELSIF p_values(l_right) < p_values(l_left) THEN
+                        l_buffer(i) := p_values(l_right);
+                        l_right := l_right + 1;
+                    ELSE
+                        l_buffer(i) := p_values(l_left);
+                        l_left := l_left + 1;
+                    END IF;
+                END LOOP;
+                l_start := l_end + 1;
+            END LOOP;
+            p_values := l_buffer;
+            l_width := l_width * 2;
+        END LOOP;
+    END sort_digests;
+
     FUNCTION digest(p_text VARCHAR2) RETURN VARCHAR2 IS
         l_hash VARCHAR2(64);
     BEGIN
@@ -49,7 +90,6 @@ CREATE OR REPLACE PACKAGE BODY pfc_copy AS
         l_text VARCHAR2(32767);
         l_hash VARCHAR2(64) := digest('HER_HEF_V1');
         l_parts t_strings;
-        l_temp VARCHAR2(32767);
     BEGIN
         IF p_guid IS NULL THEN RETURN 'ABSENT'; END IF;
         SELECT JSON_OBJECT(h.* RETURNING VARCHAR2(32767)) INTO l_text
@@ -76,15 +116,7 @@ CREATE OR REPLACE PACKAGE BODY pfc_copy AS
             l_parts(l_parts.COUNT+1) := json_digest(l_json);
         END LOOP;
         -- Sort child signatures as a multiset; duplicates and every unmanaged field count.
-        IF l_parts.COUNT > 1 THEN
-            FOR i IN 2..l_parts.COUNT LOOP
-                FOR j IN REVERSE 2..i LOOP
-                    IF l_parts(j) < l_parts(j-1) THEN
-                        l_temp:=l_parts(j); l_parts(j):=l_parts(j-1); l_parts(j-1):=l_temp;
-                    END IF;
-                END LOOP;
-            END LOOP;
-        END IF;
+        sort_digests(l_parts);
         feed(l_hash, TO_CHAR(l_parts.COUNT));
         IF l_parts.COUNT > 0 THEN
             FOR i IN 1..l_parts.COUNT LOOP feed(l_hash,l_parts(i)); END LOOP;
@@ -225,22 +257,14 @@ CREATE OR REPLACE PACKAGE BODY pfc_copy AS
         END;
 
         PROCEDURE hash_rows(p_sql VARCHAR2) IS
-            l_rows SYS_REFCURSOR; l_text VARCHAR2(32767); l_parts t_strings; l_temp VARCHAR2(32767);
+            l_rows SYS_REFCURSOR; l_text VARCHAR2(32767); l_parts t_strings;
         BEGIN
             OPEN l_rows FOR p_sql USING p_source_payor,p_destination_payor;
             LOOP FETCH l_rows INTO l_text; EXIT WHEN l_rows%NOTFOUND;
                 l_parts(l_parts.COUNT+1):=digest(l_text);
             END LOOP;
             CLOSE l_rows;
-            IF l_parts.COUNT>1 THEN
-                FOR i IN 2..l_parts.COUNT LOOP
-                    FOR j IN REVERSE 2..i LOOP
-                        IF l_parts(j)<l_parts(j-1) THEN
-                            l_temp:=l_parts(j); l_parts(j):=l_parts(j-1); l_parts(j-1):=l_temp;
-                        END IF;
-                    END LOOP;
-                END LOOP;
-            END IF;
+            sort_digests(l_parts);
             feed(l_hash,TO_CHAR(l_parts.COUNT));
             IF l_parts.COUNT>0 THEN
                 FOR i IN 1..l_parts.COUNT LOOP feed(l_hash,l_parts(i)); END LOOP;
