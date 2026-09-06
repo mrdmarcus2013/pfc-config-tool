@@ -546,3 +546,16 @@ fieldset:disabled .choice { background: #f3f5f6; }
 
 .context-grid select { width: 100%; min-width: 0; padding: 8px; border: 1px solid #bdcdd7; border-radius: 4px; background: white; color: inherit; font: inherit; }
 .context-inheritance { color: #526875; font-size: 13px; margin: 12px 0 0; }
+
+.copy-launch { margin-top: 14px; }
+.copy-destination { display: grid; gap: 8px; font-weight: 600; margin: 18px 0; }
+.copy-destination select { padding: 10px; width: 100%; font: inherit; border: 1px solid #acbec9; background: white; }
+.copy-counts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.copy-counts div { padding: 12px; background: #f2f6f7; }
+.copy-counts dd { margin: 5px 0 0; font-size: 1.2rem; font-weight: 600; }
+.copy-confirm { display: flex; align-items: flex-start; gap: 10px; padding: 18px 0; }
+.copy-confirm input { margin-top: 4px; }
+.copy-details { width: 100%; text-align: left; border-collapse: collapse; font-size: .85rem; }
+.copy-details th, .copy-details td { border-bottom: 1px solid #dde5eb; padding: 8px; }
+.copy-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding: 18px; border-top: 1px solid #c5d0d7; }
+.copy-review { margin-top: 20px; }

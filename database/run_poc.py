@@ -15,6 +15,7 @@ DATABASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = DATABASE_DIR.parent
 
 ACTION_SCRIPTS = {
+    "install_copy": [DATABASE_DIR / "install" / "010_pfc_copy.sql"],
     "install_plans": [DATABASE_DIR / "install" / "009_plan_ownership.sql", DATABASE_DIR / "install" / "004_scripts_1_2.sql", DATABASE_DIR / "install" / "005_script_3.sql", DATABASE_DIR / "packages" / "pfc_value_codes_api.pkb", DATABASE_DIR / "packages" / "pfc_remarks_api.pkb"],
     "install": [DATABASE_DIR / "install" / "install_all.sql"],
     "prep3": [DATABASE_DIR / "install" / "005_prep_script_3.sql"],
@@ -181,6 +182,7 @@ def main() -> int:
     parser.add_argument("action", choices=ACTION_SCRIPTS)
     parser.add_argument("--confirm-reset", action="store_true", help="Apply a reviewed synthetic reset preview")
     parser.add_argument("--confirm-plans", action="store_true", help="Install the reviewed local plan ownership and engine upgrade")
+    parser.add_argument("--confirm-copy", action="store_true", help="Install the reviewed local copy package")
     args = parser.parse_args()
 
     connection: oracledb.Connection | None = None
@@ -200,6 +202,16 @@ def main() -> int:
                     print("No changes made. Repeat with --confirm-reset to replace these rows with the selected seed.")
                     return 0
 
+            if args.action == "install_copy":
+                if os.environ.get("ORACLE_HOST", "").lower() not in {"localhost", "127.0.0.1", "::1"}:
+                    raise RuntimeError("Copy installation is restricted to local synthetic Oracle")
+                cursor.execute("SELECT COUNT(*) FROM payors WHERE payor_name NOT LIKE 'Synthetic %'")
+                if cursor.fetchone()[0]:
+                    raise RuntimeError("Copy installation requires synthetic data")
+                print("Preview: install the copy package without changing configuration data.")
+                if not args.confirm_copy:
+                    print("No changes made. Repeat with --confirm-copy to install.")
+                    return 0
             if args.action == "install_plans":
                 if os.environ.get("ORACLE_HOST", "").lower() not in {"localhost", "127.0.0.1", "::1"}:
                     raise RuntimeError("Plan installation is restricted to local synthetic Oracle")

@@ -1,4 +1,6 @@
 import type {
+  PayorCopyRequest,
+  PayorCopyResponse,
   ApiErrorBody,
   ApplyRequest,
   ConfigurationContextRequest,
@@ -69,6 +71,12 @@ const post = (body: object): RequestInit => ({
 });
 
 export const apiClient = {
+  previewPayorCopy: (body: PayorCopyRequest) =>
+    request<PayorCopyResponse>("/api/payor-copy/preview", post(body)),
+  eligibleCopyDestinations: (body: Omit<PayorCopyRequest, "destination_payor_guid">) =>
+    request<{ destinations: { payor_guid: string; payor_name: string }[] }>("/api/payor-copy/destinations", post(body)),
+  applyPayorCopy: (body: PayorCopyRequest & { expected_state_hash: string }) =>
+    request<PayorCopyResponse>("/api/payor-copy/apply", post(body)),
   overview: (body: ConfigurationContextRequest) =>
     request<ConfigurationOverviewResponse>("/api/config/overview", post(body)),
   options: () => request<OptionsResponse>("/api/options"),

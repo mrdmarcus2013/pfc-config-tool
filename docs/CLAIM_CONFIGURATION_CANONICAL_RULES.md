@@ -1,5 +1,8 @@
 # PFC Configuration Tool — Canonical Claim Configuration Rules
 
+The current [Payor Copy rules](PFC_COPY_RULES.md) supersede older copy-specific
+sections below, including copy modes, PFC selection and plan replacement scope.
+
 **Status:** Canonical architecture and business-rule reference  
 **Scope:** Institutional `837I_5010` claim configuration, PFC customization, and Payor Copy  
 **Audience:** Application developers, database developers, test authors, and production-validation authors

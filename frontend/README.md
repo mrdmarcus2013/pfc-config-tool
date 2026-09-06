@@ -1,5 +1,8 @@
 # PFC Configuration Tool frontend
 
+The header now includes **COPY PAYOR SETTINGS**, with a destination-wide preview
+and atomic acceptance. See [Payor Copy rules](../docs/PFC_COPY_RULES.md).
+
 Payor and plan dropdowns, plan inheritance, and additive synthetic fixtures are
 documented in [Payor plan configuration](../docs/PAYOR_PLAN_CONFIGURATION.md).
 

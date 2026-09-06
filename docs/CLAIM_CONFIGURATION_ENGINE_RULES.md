@@ -6,6 +6,12 @@ These rules apply to every MatrixCare HER/HEF configuration managed by the PFC
 tool unless a more specific approved rule explicitly overrides them. The
 generic Oracle configuration engine is authoritative for cross-feature rules.
 
+## Explicit Payor Copy exception
+
+The separate [Payor Copy workflow](PFC_COPY_RULES.md) may clone a user-selected
+source payor into another payor. This does not change source selection for
+ordinary claim-field editing.
+
 ## Payor plan scope
 
 [Payor plan configuration](PAYOR_PLAN_CONFIGURATION.md) defines the approved

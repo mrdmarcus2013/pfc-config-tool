@@ -1,5 +1,8 @@
 # Synthetic Oracle POC database
 
+The header now includes **COPY PAYOR SETTINGS**, with a destination-wide preview
+and atomic acceptance. See [Payor Copy rules](../docs/PFC_COPY_RULES.md).
+
 The additive [payor plan upgrade and fixtures](../docs/PAYOR_PLAN_CONFIGURATION.md)
 add owned plans and plan-specific overrides without resetting the database.
 

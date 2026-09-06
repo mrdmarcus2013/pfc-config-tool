@@ -201,3 +201,30 @@ export interface ConfigurationOverviewResponse {
     };
   };
 }
+export interface PayorCopyRequest {
+  source_payor_guid: string;
+  source_plan_guid: string | null;
+  destination_payor_guid: string;
+  audit_user: string;
+}
+
+export interface PayorCopyResponse {
+  status: "READY" | "NO_CHANGE" | "APPLIED";
+  state_hash: string;
+  source_pfc_guid: string;
+  source_form_template: string;
+  source_user_template: string;
+  billing_form_code: string;
+  line_of_business: "HOME_HEALTH" | "HOSPICE";
+  records_copied: number;
+  records_kept: number;
+  records_normalized: number;
+  records_removed: number;
+  plan_records_removed: number;
+  fields_copied: number;
+  fields_removed: number;
+  template_contexts_updated: number;
+  contexts: { pfc_guid: string; plan_guid: string | null; label: string; templates_changed: boolean;
+    form_template_before: string; user_template_before: string }[];
+  changes: { label: string; action: "KEEP" | "REMOVE" | "COPY"; level: string; record_type: string }[];
+}

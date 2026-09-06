@@ -32,6 +32,7 @@ import { SUPPORT_DEVELOPER_MODE } from "./app/environment";
 import {
   launchContextFromResolvedSelection, payorContextKey,
 } from "./app/payor-context";
+import { PayorCopyPanel } from "./app/payor-copy-panel";
 import { ContextSelectors } from "./app/context-selectors";
 import { technicalContextRows } from "./app/technical-context";
 import {
@@ -609,6 +610,7 @@ function LineOfBusinessControl({ context, current, loading, disabled, onChanged,
 export function App() {
   const [, setCurrentRevision] = useState(0);
   useEffect(() => subscribeCurrentConfigurations(() => setCurrentRevision((value) => value + 1)), []);
+  const [copySource, setCopySource] = useState<{ context: FrontendLaunchContext; label: string } | null>(null);
   const [optionFields, setOptionFields] = useState<OptionField[]>([]);
   const [metadataError, setMetadataError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -753,15 +755,23 @@ export function App() {
   return (
     <div className="app-shell">
       <header className="product-bar"><span className="product-mark">PFC</span><span>Configuration Tool</span></header>
+      {copySource && <PayorCopyPanel source={copySource.context} sourceLabel={copySource.label}
+        contexts={supportPayorContexts} onClose={() => setCopySource(null)}
+        onApplied={destination => { clearCurrentConfigurations(); void selectPayorContext(payorContextKey({ payor_guid: destination, plan_guid: null })); }} />}
       <main className="page-shell">
         <div className="page-heading"><div><span className="eyebrow">UB-04 institutional claim</span><h1>Customize Fields</h1></div><span className={`connection-status ${metadataError ? "offline" : ""}`}>{loading ? "Loading capabilities…" : metadataError ? "Capabilities unavailable" : "Capabilities loaded"}</span></div>
 
         <section className="context-card" aria-label="Configuration context">
           <ContextSelectors contexts={supportPayorContexts} active={activePayorContext}
-            disabled={payorCatalogLoading || contextSwitching}
+            disabled={payorCatalogLoading || contextSwitching || copySource !== null}
             billingForm={configurationContext?.billing_form_code ?? "Unavailable"}
             onSelect={key => { void selectPayorContext(key); }} />
           {(payorCatalogError || payorSwitchError) && <p role="alert">{payorCatalogError ?? payorSwitchError}</p>}
+          <button className="secondary-button copy-launch" disabled={contextSwitching || contextLoading || payorCatalogLoading || !configurationContext || !lob || copySource !== null}
+            onClick={() => { setSelectedField(null); setCopySource({ context: { ...activeContext },
+              label: activePayorContext.payor_name + " ? " + (activePayorContext.plan_name ?? (activeContext.plan_guid ? "Selected plan" : "Payor-level settings")) }); }}>
+            COPY PAYOR SETTINGS
+          </button>
           <p className="context-inheritance">{activeContext.plan_guid
             ? "Editing this plan. Default inherits payor settings."
             : "Editing payor settings. Changes also affect plans that inherit these settings."}</p>

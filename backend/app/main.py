@@ -38,9 +38,32 @@ from backend.app.models import (
     ValueCodesCurrentResponse,
 )
 from backend.app.services.configuration import ConfigurationService
+from backend.app.services.payor_copy import (
+    PayorCopyService, CopyPreviewRequest, CopyApplyRequest, CopyResponse,
+    CopyDestinationRequest, CopyDestinationsResponse,
+)
 
 
 app = FastAPI(title="PFC Configuration Tool API", version="0.1.0")
+
+
+def get_copy_service() -> PayorCopyService:
+    return PayorCopyService()
+
+
+@app.post("/api/payor-copy/destinations", response_model=CopyDestinationsResponse)
+def eligible_copy_destinations(request: CopyDestinationRequest, service: PayorCopyService = Depends(get_copy_service)):
+    return service.destinations(request)
+
+
+@app.post("/api/payor-copy/preview", response_model=CopyResponse)
+def preview_payor_copy(request: CopyPreviewRequest, service: PayorCopyService = Depends(get_copy_service)):
+    return service.run(request)
+
+
+@app.post("/api/payor-copy/apply", response_model=CopyResponse)
+def apply_payor_copy(request: CopyApplyRequest, service: PayorCopyService = Depends(get_copy_service)):
+    return service.run(request, apply=True)
 
 
 def get_configuration_service() -> ConfigurationService:
