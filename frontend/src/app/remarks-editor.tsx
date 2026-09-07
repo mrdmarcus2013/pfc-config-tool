@@ -1,16 +1,17 @@
-import { remarksCurrentCache } from "./configuration-overview";
-import { ConfigurationOwnerDetails, configurationSourceStatus } from "./configuration-owner-details";
+import { ModalSurface } from "./modal-surface.js";
+import { remarksCurrentCache } from "./configuration-overview.js";
+import { ConfigurationOwnerDetails, configurationSourceStatus } from "./configuration-owner-details.js";
 import { useEffect, useRef, useState } from "react";
-import { apiClient } from "../api/client";
+import { apiClient } from "../api/client.js";
 import type {
   LineOfBusiness,
   RemarksChangeResponse,
   RemarksCurrentResponse,
-} from "../api/types";
-import type { ClaimFieldCatalogEntry } from "../types/claim-field";
-import type { FrontendLaunchContext } from "../types/launch-context";
-import { ClaimFieldPanelHeader } from "./claim-field-panel-header";
-import { EditorFooter } from "./editor-footer";
+} from "../api/types.js";
+import type { ClaimFieldCatalogEntry } from "../types/claim-field.js";
+import type { FrontendLaunchContext } from "../types/launch-context.js";
+import { ClaimFieldPanelHeader } from "./claim-field-panel-header.js";
+import { EditorFooter } from "./editor-footer.js";
 import { runEditorPreview, type PreviewRecord } from "./editor-preview.js";
 import {
   REMARKS_CUSTOM_REMARK_MAX_LENGTH,
@@ -20,14 +21,14 @@ import {
   remarksIntentIsValid,
   remarksIntentMatchesCurrent,
   remarksRequest,
-} from "./remarks";
+} from "./remarks.js";
 import {
   currentPreview,
   editorActionState,
   previewAllowsApply,
   safeError,
   SingleFlightGate,
-} from "./workflow";
+} from "./workflow.js";
 
 interface RemarksEditorProps {
   field: ClaimFieldCatalogEntry;
@@ -148,7 +149,7 @@ export function RemarksEditor({
   const currentLabel = current?.mode === "CUSTOM" ? "Custom remark" : "Default";
   return (
     <div className="drawer-backdrop" role="presentation">
-      <aside className="field-editor" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+      <ModalSurface as="aside" className="field-editor" role="dialog" aria-modal="true" aria-labelledby="editor-title" onDismiss={onClose}>
         <ClaimFieldPanelHeader title="Remarks" onClose={onClose} />
         <div className="editor-body">
           <section className="editor-section">
@@ -224,8 +225,8 @@ export function RemarksEditor({
           previewLabel={busy === "preview" ? "Previewing…" : "Preview"}
           onDismiss={onClose} onPreview={runPreview}
           onApply={() => setConfirmationOpen(true)} />
-        {confirmationOpen && <div className="confirmation-backdrop" role="presentation"><div className="confirmation" role="alertdialog" aria-modal="true"><h3>Apply configuration?</h3><p><strong>{field.fieldNumber} — Remarks</strong></p><p>{intent.mode === "DEFAULT" ? "Use standard remarks" : intent.customRemark}</p><div className="confirmation-actions"><button type="button" className="secondary-button" onClick={() => setConfirmationOpen(false)}>Cancel</button><button type="button" className="primary-button" onClick={runApply}>Apply</button></div></div></div>}
-      </aside>
+        {confirmationOpen && <div className="confirmation-backdrop" role="presentation"><ModalSurface className="confirmation" role="alertdialog" aria-modal="true" aria-labelledby="remarks-confirmation-title" onDismiss={() => setConfirmationOpen(false)} focusOnOpen="first"><h3 id="remarks-confirmation-title">Apply configuration?</h3><p><strong>{field.fieldNumber} — Remarks</strong></p><p>{intent.mode === "DEFAULT" ? "Use standard remarks" : intent.customRemark}</p><div className="confirmation-actions"><button type="button" className="secondary-button" data-modal-initial-focus onClick={() => setConfirmationOpen(false)}>Cancel</button><button type="button" className="primary-button" onClick={runApply}>Apply</button></div></ModalSurface></div>}
+      </ModalSurface>
     </div>
   );
 }

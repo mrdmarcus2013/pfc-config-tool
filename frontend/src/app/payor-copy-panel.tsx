@@ -3,6 +3,7 @@ import { apiClient } from "../api/client.js";
 import type { PayorCopyRequest, PayorCopyResponse } from "../api/types";
 import type { FrontendLaunchContext } from "../types/launch-context";
 import { safeError } from "./workflow.js";
+import { ModalSurface } from "./modal-surface.js";
 
 export function CopyReview({ result, destination }: { result: PayorCopyResponse; destination: string }) {
   return <section aria-label="Copy preview" className="copy-review">
@@ -32,9 +33,10 @@ export function CopyReview({ result, destination }: { result: PayorCopyResponse;
   </section>;
 }
 
-export function PayorCopyPanel({ source, sourceLabel, onClose, onApplied }: {
+export function PayorCopyPanel({ source, sourceLabel, onClose, onApplied, returnFocusElement }: {
   source: FrontendLaunchContext; sourceLabel: string;
   onClose: () => void; onApplied: (destination: string) => void;
+  returnFocusElement?: HTMLElement | null;
 }) {
   const [destination, setDestination] = useState("");
   const [preview, setPreview] = useState<PayorCopyResponse | null>(null);
@@ -42,7 +44,6 @@ export function PayorCopyPanel({ source, sourceLabel, onClose, onApplied }: {
   const [busy, setBusy] = useState<"preview" | "apply" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const gate = useRef(false);
-  const dialog = useRef<HTMLDivElement>(null);
   const [options, setOptions] = useState<{ payor_guid: string; payor_name: string }[]>([]);
   const [loadingDestinations, setLoadingDestinations] = useState(true);
   const [destinationError, setDestinationError] = useState<string | null>(null);
@@ -65,14 +66,6 @@ export function PayorCopyPanel({ source, sourceLabel, onClose, onApplied }: {
     return () => { cancelled = true; };
   }, [source.payor_guid, source.plan_guid, source.audit_user, retry]);
 
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    const oldOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    dialog.current?.focus();
-    return () => { document.body.style.overflow = oldOverflow; previous?.focus(); };
-  }, []);
-
   const run = async (apply: boolean) => {
     if (gate.current || !destination || (apply && (!accepted || preview?.status !== "READY"))) return;
     gate.current = true; setBusy(apply ? "apply" : "preview"); setError(null);
@@ -88,17 +81,8 @@ export function PayorCopyPanel({ source, sourceLabel, onClose, onApplied }: {
   };
 
   return <div className="drawer-backdrop">
-    <div className="field-editor copy-panel" role="dialog" aria-modal="true" aria-labelledby="copy-title" ref={dialog} tabIndex={-1}
-      onKeyDown={event => {
-        if (event.key === "Escape" && !gate.current) { event.preventDefault(); onClose(); }
-        if (event.key === "Tab") {
-          const elements = dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled),select:not(:disabled),input:not(:disabled),summary');
-          if (!elements?.length) return;
-          const first = elements[0], last = elements[elements.length-1];
-          if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog.current)) { event.preventDefault(); last.focus(); }
-          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-        }
-      }}>
+    <ModalSurface className="field-editor copy-panel" role="dialog" aria-modal="true" aria-labelledby="copy-title"
+      onDismiss={onClose} canDismiss={() => !gate.current} returnFocusElement={returnFocusElement}>
       <header className="editor-header"><div><span className="eyebrow">Payor configuration</span><h2 id="copy-title">Copy Payor Settings</h2></div>
         <button className="icon-button" aria-label="Close copy panel" disabled={!!busy} onClick={onClose}>×</button></header>
       <div className="editor-body">
@@ -127,6 +111,6 @@ export function PayorCopyPanel({ source, sourceLabel, onClose, onApplied }: {
         {!applied && <button className="secondary-button" disabled={!!busy || !destination} onClick={() => { void run(false); }}>Preview</button>}
         {!applied && <button className="primary-button" disabled={!!busy || !accepted || preview?.status !== "READY"} onClick={() => { void run(true); }}>Accept and Copy</button>}
       </footer>
-    </div>
+    </ModalSurface>
   </div>;
 }

@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ClaimFieldPanelHeader } from "../.test-build/app/claim-field-panel-header.js";
 import { FieldEditor } from "../.test-build/app/field-editor.js";
 import { ValueCodesEditor } from "../.test-build/app/value-codes-editor.js";
+import { RemarksEditor } from "../.test-build/app/remarks-editor.js";
 import { CLAIM_FIELD_CATALOG } from "../.test-build/data/claim-field-catalog.js";
 
 const corruptedClose = String.fromCodePoint(0x00c3, 0x2014);
@@ -21,10 +22,11 @@ test("shared claim-field panel header uses an accessible ASCII close control", (
   assert.ok(!markup.includes(unicodeMultiply));
 });
 
-test("Value Codes, Service Facility, and Provider Taxonomy render the shared header and wait for current state", () => {
+test("claim-field editors render labelled focusable panels and wait for current state", () => {
   const context = { payor_guid: "synthetic-payor", plan_guid: null, pfc_guid: "synthetic-pfc", audit_user: "synthetic-audit" };
   for (const [fieldNumber, component, title] of [
     ["39-41", ValueCodesEditor, "Value Codes"],
+    ["80", RemarksEditor, "Remarks"],
     ["77", FieldEditor, "Field 77 — Operating Provider"],
     ["81", FieldEditor, "Field 81cc"],
   ]) {
@@ -33,6 +35,7 @@ test("Value Codes, Service Facility, and Provider Taxonomy render the shared hea
       field, context, lineOfBusiness: "HOME_HEALTH", supportDeveloperMode: false, onClose() {},
     }));
     assert.match(markup, /role="dialog" aria-modal="true" aria-labelledby="editor-title"/);
+    assert.match(markup, /<aside[^>]+tabindex="-1"/);
     assert.ok(markup.includes(`<h2 id="editor-title">${title}</h2>`));
     assert.match(markup, /aria-label="Close">X<\/button>/);
     assert.match(markup, /Loading current configuration/);

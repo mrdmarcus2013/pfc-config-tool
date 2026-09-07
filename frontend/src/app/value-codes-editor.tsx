@@ -1,3 +1,4 @@
+import { ModalSurface } from "./modal-surface.js";
 import { useEffect, useRef, useState } from "react";
 import { apiClient } from "../api/client.js";
 import type {
@@ -77,7 +78,7 @@ export function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supp
   };
   const summary = valueCodesSummary(lineOfBusiness, selected);
   return <div className="drawer-backdrop" role="presentation">
-    <aside className="field-editor" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+    <ModalSurface as="aside" className="field-editor" role="dialog" aria-modal="true" aria-labelledby="editor-title" onDismiss={onClose}>
       <ClaimFieldPanelHeader title="Value Codes" onClose={onClose} />
       <div className="editor-body"><section className="editor-section"><h3>Value Codes</h3>
         {loading && <p className="current-loading" role="status">Loading current configuration…</p>}
@@ -111,6 +112,6 @@ export function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supp
       </section></div>
       <EditorFooter actionState={actionState} previewDisabled={busy !== null || loading || current === null || !dirty}
         previewLabel={busy === "preview" ? "Previewing…" : "Preview"} onDismiss={onClose} onPreview={runPreview} onApply={() => setConfirmationOpen(true)}/>
-      {confirmationOpen && <div className="confirmation-backdrop" role="presentation"><div className="confirmation" role="alertdialog" aria-modal="true"><h3>Apply configuration?</h3><p><strong>{field.fieldNumber} — Value Codes</strong></p><p>{summary}</p><div className="confirmation-actions"><button type="button" className="secondary-button" onClick={() => setConfirmationOpen(false)}>Cancel</button><button type="button" className="primary-button" onClick={runApply}>Apply</button></div></div></div>}
-    </aside></div>;
+      {confirmationOpen && <div className="confirmation-backdrop" role="presentation"><ModalSurface className="confirmation" role="alertdialog" aria-modal="true" aria-labelledby="value-codes-confirmation-title" onDismiss={() => setConfirmationOpen(false)} focusOnOpen="first"><h3 id="value-codes-confirmation-title">Apply configuration?</h3><p><strong>{field.fieldNumber} — Value Codes</strong></p><p>{summary}</p><div className="confirmation-actions"><button type="button" className="secondary-button" data-modal-initial-focus onClick={() => setConfirmationOpen(false)}>Cancel</button><button type="button" className="primary-button" onClick={runApply}>Apply</button></div></ModalSurface></div>}
+    </ModalSurface></div>;
 }

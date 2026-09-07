@@ -18,6 +18,7 @@ import {
 } from "./workflow.js";
 import { EditorFooter } from "./editor-footer.js";
 import { ClaimFieldPanelHeader } from "./claim-field-panel-header.js";
+import { ModalSurface } from "./modal-surface.js";
 import { fieldEditorTitle } from "./presentation.js";
 import { PreviewResult } from "./preview-result.js";
 import { runEditorPreview, type PreviewRecord } from "./editor-preview.js";
@@ -161,7 +162,7 @@ export function FieldEditor({ field, context, onClose, supportDeveloperMode }: F
 
   return (
     <div className="drawer-backdrop" role="presentation">
-      <aside className="field-editor" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+      <ModalSurface as="aside" className="field-editor" role="dialog" aria-modal="true" aria-labelledby="editor-title" onDismiss={onClose}>
         <ClaimFieldPanelHeader title={fieldEditorTitle(field)} onClose={onClose} />
 
         <div className="editor-body">
@@ -271,12 +272,12 @@ export function FieldEditor({ field, context, onClose, supportDeveloperMode }: F
           onApply={() => setConfirmationOpen(true)}
         />
 
-        {confirmationOpen && <div className="confirmation-backdrop" role="presentation"><div className="confirmation" role="alertdialog" aria-modal="true" aria-labelledby="confirmation-title">
+        {confirmationOpen && <div className="confirmation-backdrop" role="presentation"><ModalSurface className="confirmation" role="alertdialog" aria-modal="true" aria-labelledby="confirmation-title" onDismiss={() => setConfirmationOpen(false)} focusOnOpen="first">
           <h3 id="confirmation-title">Apply configuration?</h3>
           <p><strong>Field {field.fieldNumber} — {field.label}</strong></p><p>{selectionSummary}</p>
-          <div className="confirmation-actions"><button type="button" className="secondary-button" onClick={() => setConfirmationOpen(false)}>Cancel</button><button type="button" className="primary-button" disabled={busy !== null} onClick={runApply}>Apply</button></div>
-        </div></div>}
-      </aside>
+          <div className="confirmation-actions"><button type="button" className="secondary-button" data-modal-initial-focus onClick={() => setConfirmationOpen(false)}>Cancel</button><button type="button" className="primary-button" disabled={busy !== null} onClick={runApply}>Apply</button></div>
+        </ModalSurface></div>}
+      </ModalSurface>
     </div>
   );
 }

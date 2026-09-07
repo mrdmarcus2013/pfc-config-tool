@@ -19,6 +19,7 @@ test("copy panel explains full destination replacement and requires preview befo
     sourceLabel:"Synthetic source",onClose(){},onApplied(){},
   }));
   assert.match(html,/Destination plan overrides will be cleared/);
+  assert.match(html,/role="dialog" aria-modal="true" aria-labelledby="copy-title" tabindex="-1"/);
   assert.match(html,/Line of Business must match/);
   assert.match(html,/<button[^>]+disabled[^>]*>Accept and Copy/);
   assert.doesNotMatch(html,/SYN-AUDIT/);

@@ -267,7 +267,8 @@ automatic retries.
 ## Correctness pass: context switching and Copy feedback
 
 Implemented locally on `fix/context-switch-copy-feedback`, after `b1304ed`.
-These changes remain uncommitted and have not been pushed.
+It was checkpointed locally as `31a611c` before the keyboard/focus pass.
+These changes have not been pushed.
 
 - Give each mounted Line of Business control its own request lifetime. Late
   Save, Preview, and Apply responses cannot update a removed control or release
@@ -307,9 +308,56 @@ Oracle reports no compilation errors, installed Copy sources match the working
 files, and persisted configuration and plan ownership remain unchanged.
 Independent backend, Oracle, and frontend reviews found no material issues.
 
-## Remaining correctness work
+## Correctness pass: modal keyboard and focus handling
 
-- Consistent keyboard/focus handling across modal editors.
+Implemented locally on `fix/modal-keyboard-focus`, after `31a611c`. This pass
+remains uncommitted and has not been pushed.
+
+- Share focus management across ordinary field editors, Value Codes, Remarks,
+  Copy, nested Apply confirmations, and the Line of Business reset dialog.
+  Preserve each surface's existing Close, Cancel, Go Back and busy-state policy.
+- Move focus into a newly opened dialog, keep Tab and Shift+Tab within the
+  topmost dialog, and let Escape perform that dialog's existing dismissal action.
+  Nested confirmation Escape leaves its parent editor open. Confirmation focus
+  starts on Cancel or Go Back, including when technical details precede it.
+- Return focus to the opener when it remains usable. An unavailable nested
+  opener falls back to its parent dialog; an unavailable final opener falls
+  back to the existing page heading. Recover focus when an asynchronous result
+  removes or disables the focused control.
+- Capture Copy's launcher explicitly before opening can disable it. Recheck an
+  unavailable final opener after React finishes the closing commit, without
+  stealing focus from a newer modal or another deliberate focus change.
+- Keep one Line of Business modal across warning/confirmation transitions to
+  retain its original opener. Refocus the safe action when the stage changes.
+- Coordinate body scroll locking and event cleanup across nested dialogs,
+  Strict Mode effect replay, and parent-before-child teardown.
+
+The shared implementation adds no dependencies and does not change API requests,
+Preview/Apply guards, configuration values, or database code. Its keyboard and
+focus behavior follows the [WAI-ARIA modal dialog pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/).
+
+Verification passed all 127 frontend tests and the production build/typecheck.
+The 22 new focus tests exercise the actual controller against a simulated DOM,
+plus server-rendered surface attributes. Coverage includes nested Tab/Escape,
+hidden and disabled controls, radio groups, collapsed details, stage changes,
+removed controls, explicit Copy opener capture, deferred restoration, and
+Strict Mode cleanup. Existing editor rendering checks now also include Remarks;
+its relative imports use the explicit extensions required by the Node test
+runner. A comparison confirmed all 20 named editor handlers/request callbacks
+match `31a611c`. Independent review found and verified fixes for Copy's opener
+timing, with no remaining material findings. Backend and Oracle files are unchanged.
+
+Live browser verification remains pending. The dedicated browser connection
+reported no surfaces. Computer Use later found the running PFC Chrome window but
+stopped because it could not determine the current URL sufficiently to enforce
+its browser policy. No alternate browser-control route was used after that stop.
+
+## Remaining verification
+
+- Check keyboard and screen-reader behavior in a connected browser: all editor
+  launchers; nested confirmation Cancel/Apply; Tab through radios, textarea,
+  disabled fieldsets and collapsed details; Copy during/after save; Line of
+  Business warning/confirmation/back; return after payor switching.
 
 Production harness adaptation remains a separate effort governed by
 [the production boundary](PRODUCTION_DATABASE_BOUNDARY.md); standalone scripts

@@ -148,6 +148,20 @@ translated to safe user messages; raw Oracle details are not rendered.
 After that fresh read confirms the requested state, the completion footer shows
 only **Close**; dismissing it performs no API or database action.
 
+## Keyboard and focus
+
+Editors and confirmations share modal focus handling. Opening an editor focuses
+its dialog; confirmations focus Cancel or Go Back. Tab and Shift+Tab stay within
+the active dialog, and Escape invokes its existing dismissal action. Escape in
+a nested confirmation leaves the editor open. Copy retains its existing refusal
+to close during Preview or Apply.
+
+Closing returns focus to the launcher when possible, to the parent editor after
+a nested confirmation, or to the page heading when the launcher is unavailable.
+The Line of Business warning and confirmation keep one modal lifetime so final
+focus returns to Change Line of Business. Background page scrolling stays locked
+until the final dialog closes.
+
 ## Checks
 
 ```powershell
@@ -160,3 +174,8 @@ Vite serves `src/main.tsx` directly and owns the browser TypeScript, JSX, and
 React dependency transformation. Node unit tests compile their imports into the
 separate ignored `.test-build` directory; those artifacts are never browser
 entry points. The production build is emitted to the ignored `dist` directory.
+
+Modal tests exercise the actual focus controller with a simulated DOM and check
+server-rendered markup. They do not substitute for browser-native keyboard,
+layout, or screen-reader verification; those checks remain pending until browser
+automation is connected.

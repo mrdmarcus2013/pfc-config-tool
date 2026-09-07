@@ -7,6 +7,7 @@ import type { FrontendLaunchContext } from "../types/launch-context";
 import { lineOfBusinessLabel, lobApplyRequest, lobPreviewAfterError, otherLineOfBusiness } from "./line-of-business.js";
 import { LineOfBusinessRequestScope, runLineOfBusinessRequest } from "./line-of-business-request.js";
 import { SUPPORT_DEVELOPER_MODE } from "./environment.js";
+import { ModalSurface } from "./modal-surface.js";
 
 interface LineOfBusinessControlProps {
   context: FrontendLaunchContext;
@@ -104,15 +105,19 @@ export function LineOfBusinessControl({ context, current, loading, disabled, onC
       </>}
       {error && <div className="notice error" role="alert"><strong>Line of Business was not changed</strong><p>{error.category === "stale_preview" ? "The reset scope changed after it was reviewed. Continue to run a new preview." : error.message}</p></div>}
 
-      {stage === "warning" && saved && selection && <div className="modal-backdrop" role="presentation"><div className="lob-modal" role="alertdialog" aria-modal="true" aria-labelledby="lob-warning-title">
+      {((stage === "warning" && saved && selection) || (stage === "confirm" && preview)) &&
+      <div className="modal-backdrop" role="presentation"><ModalSurface className="lob-modal" role="alertdialog" aria-modal="true"
+        aria-labelledby={stage === "warning" ? "lob-warning-title" : "lob-confirm-title"}
+        onDismiss={() => setStage(stage === "warning" ? null : "warning")} focusOnOpen="first" focusKey={stage ?? ""}>
+      {stage === "warning" && saved && selection && <>
         <h3 id="lob-warning-title">Change Line of Business?</h3>
         {error?.category === "stale_preview" && <div className="notice error" role="alert"><strong>Run a new reset preview</strong><p>The reset scope changed after it was reviewed. Continue to refresh the preview before applying.</p></div>}
         <p>Changing the Line of Business from {lineOfBusinessLabel(saved)} to {lineOfBusinessLabel(selection)} will remove all payor-specific claim field customizations managed by this tool and restore those fields to their standard default configuration.</p>
         <p><strong>This applies to all plans under this payor.</strong></p>
-        <div className="confirmation-actions"><button type="button" className="secondary-button" onClick={() => setStage(null)}>Cancel</button><button type="button" className="primary-button" disabled={busy !== null} onClick={runChangePreview}>{busy === "preview" ? "Reviewing…" : "Continue"}</button></div>
-      </div></div>}
+        <div className="confirmation-actions"><button type="button" className="secondary-button" data-modal-initial-focus onClick={() => setStage(null)}>Cancel</button><button type="button" className="primary-button" disabled={busy !== null} onClick={runChangePreview}>{busy === "preview" ? "Reviewing…" : "Continue"}</button></div>
+      </>}
 
-      {stage === "confirm" && preview && <div className="modal-backdrop" role="presentation"><div className="lob-modal" role="alertdialog" aria-modal="true" aria-labelledby="lob-confirm-title">
+      {stage === "confirm" && preview && <>
         <h3 id="lob-confirm-title">Confirm Reset</h3>
         <p>Reset all managed claim field customizations for all plans under this payor and change Line of Business to {lineOfBusinessLabel(preview.requested_line_of_business)}?</p>
         <p><strong>{preview.affected_managed_target_count} customized claim-field component(s) will be reset.</strong></p>
@@ -122,8 +127,9 @@ export function LineOfBusinessControl({ context, current, loading, disabled, onC
           <div><dt>Managed records</dt><dd>{preview.managed_her_count}</dd></div>
           <div><dt>Managed fields</dt><dd>{preview.managed_hef_count}</dd></div>
         </dl></details>}
-        <div className="confirmation-actions"><button type="button" className="secondary-button" onClick={() => setStage("warning")}>Go Back</button><button type="button" className="primary-button" disabled={busy !== null} onClick={applyChange}>{busy === "apply" ? "Resetting…" : `Reset Fields and Change to ${lineOfBusinessLabel(preview.requested_line_of_business)}`}</button></div>
-      </div></div>}
+        <div className="confirmation-actions"><button type="button" className="secondary-button" data-modal-initial-focus onClick={() => setStage("warning")}>Go Back</button><button type="button" className="primary-button" disabled={busy !== null} onClick={applyChange}>{busy === "apply" ? "Resetting…" : `Reset Fields and Change to ${lineOfBusinessLabel(preview.requested_line_of_business)}`}</button></div>
+      </>}
+      </ModalSurface></div>}
     </section>
   );
 }
