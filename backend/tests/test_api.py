@@ -108,7 +108,9 @@ class StubService:
         return {
             "configuration_status": "RESOLVED", "line_of_business": "HOME_HEALTH",
             "is_default": True, "selections": value_code_selections(),
-            "canonical_status": "INHERITED", "display_summary": "Default",
+            "effective_selections": value_code_selections(cbsa=True, fips=True),
+            "inherited_selections": value_code_selections(cbsa=True, fips=True),
+            "canonical_status": "INHERITED", "display_summary": "CBSA and FIPS (inherited)",
             "pfc_guid": "30000000-0000-0000-0000-0000000000A1", "debug": {},
         }
 
@@ -392,6 +394,8 @@ def test_value_codes_uses_structured_contract_without_recipe_ids(client):
     assert current.status_code == 200
     assert current.json()["is_default"] is True
     assert current.json()["selections"] == value_code_selections()
+    assert current.json()["effective_selections"] == value_code_selections(cbsa=True, fips=True)
+    assert current.json()["inherited_selections"] == value_code_selections(cbsa=True, fips=True)
     assert "recipe" not in current.text.lower()
 
     preview = client.post("/api/config/value-codes/preview", json={**base,

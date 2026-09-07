@@ -15,6 +15,7 @@ DATABASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = DATABASE_DIR.parent
 
 ACTION_SCRIPTS = {
+    "install_value_codes_display": [DATABASE_DIR / "install" / "013_value_codes_display.sql"],
     "install_validation": [DATABASE_DIR / "install" / "012_validation_guards.sql"],
     "install_internals": [DATABASE_DIR / "install" / "011_refactor_internals.sql"],
     "install_copy": [DATABASE_DIR / "install" / "010_pfc_copy.sql"],
@@ -187,6 +188,7 @@ def main() -> int:
     parser.add_argument("--confirm-copy", action="store_true", help="Install the reviewed local copy package")
     parser.add_argument("--confirm-internals", action="store_true", help="Install the reviewed local Oracle internal refactor")
     parser.add_argument("--confirm-validation", action="store_true", help="Install the reviewed local configuration validation fixes")
+    parser.add_argument("--confirm-value-codes-display", action="store_true", help="Install the reviewed local Value Codes current display metadata")
     args = parser.parse_args()
 
     connection: oracledb.Connection | None = None
@@ -206,6 +208,16 @@ def main() -> int:
                     print("No changes made. Repeat with --confirm-reset to replace these rows with the selected seed.")
                     return 0
 
+            if args.action == "install_value_codes_display":
+                if os.environ.get("ORACLE_HOST", "").lower() not in {"localhost", "127.0.0.1", "::1"}:
+                    raise RuntimeError("Value Codes display installation is restricted to local synthetic Oracle")
+                cursor.execute("SELECT COUNT(*) FROM payors WHERE payor_id IS NULL OR payor_id NOT LIKE 'SYN-%'")
+                if cursor.fetchone()[0]:
+                    raise RuntimeError("Value Codes display installation requires synthetic data")
+                print("Preview: replace the two Value Codes package bodies to add current display metadata and make recipe recognition reject missing required values; no configuration data or schema tables will be changed.")
+                if not args.confirm_value_codes_display:
+                    print("No changes made. Repeat with --confirm-value-codes-display to install.")
+                    return 0
             if args.action == "install_validation":
                 if os.environ.get("ORACLE_HOST", "").lower() not in {"localhost", "127.0.0.1", "::1"}:
                     raise RuntimeError("Validation installation is restricted to local synthetic Oracle")

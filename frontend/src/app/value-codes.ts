@@ -1,10 +1,46 @@
-import type { LineOfBusiness, ValueCodeSelections } from "../api/types";
+import type { LineOfBusiness, ValueCodeSelections, ValueCodesCurrentResponse } from "../api/types";
 import type { FrontendLaunchContext } from "../types/launch-context";
 
 export const emptyValueCodeSelections = (): ValueCodeSelections => ({
   cbsa: false, fips: false, care_location_value_code: false,
   patient_entered_value_code: false, covered_days_value_code: false,
 });
+
+export interface ValueCodesIntent {
+  useInherited: boolean;
+  selections: ValueCodeSelections;
+}
+
+export const valueCodesIntentFromCurrent = (current: ValueCodesCurrentResponse): ValueCodesIntent => ({
+  useInherited: current.is_default,
+  selections: { ...(current.effective_selections ?? emptyValueCodeSelections()) },
+});
+
+// The existing API encodes inheritance as five false flags. Displayed inherited
+// capabilities are separate, so opening the editor never creates an override.
+export const valueCodesRequestSelections = (intent: ValueCodesIntent): ValueCodeSelections =>
+  intent.useInherited ? emptyValueCodeSelections() : intent.selections;
+
+export const valueCodesIntentIsValid = (intent: ValueCodesIntent): boolean =>
+  intent.useInherited || Object.values(intent.selections).some(Boolean);
+
+export const valueCodesIntentMatchesCurrent = (
+  current: ValueCodesCurrentResponse, intent: ValueCodesIntent,
+): boolean => intent.useInherited ? current.is_default
+  : current.effective_selections != null && valueCodeSelectionsEqual(current.effective_selections, intent.selections);
+
+export const valueCodesDisplayedSelections = (
+  current: ValueCodesCurrentResponse, intent: ValueCodesIntent,
+): ValueCodeSelections | null => intent.useInherited ? current.inherited_selections ?? null : intent.selections;
+
+export const valueCodesIntentSummary = (
+  current: ValueCodesCurrentResponse, intent: ValueCodesIntent,
+): string => {
+  const shown = valueCodesDisplayedSelections(current, intent);
+  if (shown === null) return "Inherited settings";
+  if (!Object.values(shown).some(Boolean)) return intent.useInherited ? "Off (inherited)" : "No capabilities selected";
+  return valueCodesSummary(current.line_of_business, shown) + (intent.useInherited ? " (inherited)" : "");
+};
 
 export const valueCodeSelectionIdentity = (
   context: FrontendLaunchContext, lineOfBusiness: LineOfBusiness,

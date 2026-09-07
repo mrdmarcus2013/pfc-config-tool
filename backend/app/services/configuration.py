@@ -19,6 +19,7 @@ from backend.app.models import (
     LineOfBusinessCurrentResponse,
     LineOfBusinessSaveResponse,
     RemarksChangeResponse,
+    ValueCodeSelections,
     ValueCodesChangeResponse,
 )
 
@@ -395,6 +396,33 @@ def _configuration_owners(row: dict[str, Any]) -> list[dict[str, str]]:
         raise ApiError(500, "application_failure", "Configuration ownership could not be resolved safely.") from None
 
 
+def _value_code_selections_json(raw: Any, line_of_business: str) -> dict[str, bool] | None:
+    """Decode complete Oracle-derived capability metadata without inventing disabled flags."""
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError("Invalid Value Code capability metadata")
+
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result = dict(pairs)
+        if len(result) != len(pairs):
+            raise ValueError("Duplicate Value Code capability metadata")
+        return result
+
+    selections = json.loads(raw, object_pairs_hook=unique_object)
+    if not isinstance(selections, dict) or set(selections) != set(ValueCodeSelections.model_fields):
+        raise ValueError("Incomplete Value Code capability metadata")
+    validated = ValueCodeSelections.model_validate(selections, strict=True)
+    if line_of_business == "HOME_HEALTH":
+        unsupported = (validated.care_location_value_code, validated.patient_entered_value_code,
+                       validated.covered_days_value_code)
+    else:
+        unsupported = (validated.cbsa, validated.fips)
+    if any(unsupported):
+        raise ValueError("Value Code capability metadata does not match Line of Business")
+    return validated.model_dump()
+
+
 class ConfigurationService:
     """Open one connection per call and delegate all configuration logic to Oracle."""
 
@@ -583,6 +611,8 @@ class ConfigurationService:
                 "line_of_business": lob,
                 "is_default": row.get("is_default") == "Y",
                 "selections": {key: row[key] == "Y" for key in keys},
+                "effective_selections": _value_code_selections_json(row["effective_selections"], lob),
+                "inherited_selections": _value_code_selections_json(row["inherited_selections"], lob),
                 "canonical_status": str(row["canonical_status"]),
                 "display_summary": str(row["display_summary"]),
                 "pfc_guid": str(row["pfc_guid"]),

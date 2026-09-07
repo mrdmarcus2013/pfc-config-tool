@@ -1,5 +1,18 @@
 # Behavior-preserving refactor
 
+## Accepted viability build: September 7, 2026
+
+The user accepted the current functionality and reported sufficient successful
+browser testing for this demonstration. The refactor stages and correctness
+fixes below are included in the accepted viability version, including inherited
+Value Codes display. Earlier references to local-only checkpoints describe the
+history before this release.
+
+This build demonstrates feasible configuration workflows using a local Oracle
+schema and synthetic data modeled on known MatrixCare facts. Production work is
+explicitly deferred. Automated mounted-browser and screen-reader coverage was
+not completed by the agent; it is not a remaining acceptance gate for this demo.
+
 The copy workflow and eligible destination selector were committed and pushed
 to `main` as `69f3be9` before refactoring. Refactor work begins on
 `refactor/stage-1-structure-tests`.
@@ -311,7 +324,8 @@ Independent backend, Oracle, and frontend reviews found no material issues.
 ## Correctness pass: modal keyboard and focus handling
 
 Implemented locally on `fix/modal-keyboard-focus`, after `31a611c`. This pass
-remains uncommitted and has not been pushed.
+was checkpointed locally as `3aee8ff` before the inherited Value Codes display
+fix and has not been pushed.
 
 - Share focus management across ordinary field editors, Value Codes, Remarks,
   Copy, nested Apply confirmations, and the Line of Business reset dialog.
@@ -352,13 +366,77 @@ reported no surfaces. Computer Use later found the running PFC Chrome window but
 stopped because it could not determine the current URL sufficiently to enforce
 its browser policy. No alternate browser-control route was used after that stop.
 
-## Remaining verification
+## Correctness fix: inherited Value Codes display
 
-- Check keyboard and screen-reader behavior in a connected browser: all editor
-  launchers; nested confirmation Cancel/Apply; Tab through radios, textarea,
-  disabled fieldsets and collapsed details; Copy during/after save; Line of
-  Business warning/confirmation/back; return after payor switching.
+Implemented locally on `fix/value-codes-inherited-display`, after `3aee8ff`.
+This fix is included in the accepted September 7 viability checkpoint.
 
-Production harness adaptation remains a separate effort governed by
+The current label could correctly say CBSA and FIPS were inherited while both
+proposal checkboxes were empty. Oracle's existing `selections` field encodes
+editing intent: all false means Default, so it could not also describe enabled
+inherited capabilities.
+
+Current now appends separate nullable `effective_selections` and
+`inherited_selections` metadata derived by Oracle. The backend validates complete
+boolean objects, supported combinations and Line of Business. Unknown remains
+null. Existing current columns, request formats, Preview/Apply procedures and
+hash rules remain intact. The new fields require upgrading the local package
+bodies before restarting the backend.
+
+The proposal separates Use inherited settings from Customize. Inherited boxes
+show actual capabilities and are read-only; Customize starts from effective
+values. Reset displays the actual parent values, including payor inheritance
+for a selected plan. Custom requests need at least one selected capability;
+all-false remains the existing Default request. Apply verifies effective values,
+including when the engine removes an override because it matches inheritance.
+Stale-preview recovery refreshes inherited values without discarding the proposal.
+
+Regression tests also exposed a private Value Codes comparator returning SQL
+NULL for a missing required value. Its callers could then incorrectly recognize
+an enabled recipe. The comparator now returns a definite boolean; legitimate
+null paired attributes remain supported. No recipe, generic write logic or
+production harness was changed.
+
+Local package installation previews by default, replaces only two existing
+package bodies, and never reseeds configuration:
+
+```powershell
+.venv/Scripts/python.exe database/run_poc.py install_value_codes_display
+.venv/Scripts/python.exe database/run_poc.py install_value_codes_display --confirm-value-codes-display
+$env:RUN_ORACLE_VALUE_CODES_DISPLAY='1'
+.venv/Scripts/python.exe -m pytest database/tests/test_value_codes_display.py -q
+```
+
+Verification passed all 136 frontend tests, the production build/typecheck,
+and 527 Python tests (39 environment-gated tests skipped). The new rendering
+and intent tests cover inherited Home Health and Hospice,
+plan reset, customization, unknown capabilities, minimal overrides and refreshed
+inheritance after a stale preview. The 36 new rollback-only Oracle cases include
+all seven recipes and missing-value regressions. Strict backend tests reject
+missing, malformed, partial or incompatible capability metadata.
+
+All 706 read/preview and 35 rollback-only Apply cases match a fresh pre-change
+baseline after excluding only the two added Current columns. Existing cursor
+columns/types, hashes, complete rows and audit behavior match. All 14 captured
+live API/schema responses likewise match except the intentional metadata
+additions. Six existing inherited CBSA/FIPS contexts read through Vite and the
+restarted backend render both boxes checked while retaining the Default request.
+This checks server-rendered markup. The user subsequently accepted their manual
+browser verification for the viability build on September 7.
+
+Three existing Copy tests assumed the editable destination demo had not already
+been copied. Their setup now creates the required differences within rollback,
+and checks restoration across all nine configuration/ownership tables. Copy
+runtime code and saved demo settings are unchanged. Oracle reports no compilation
+errors, both installed Value Codes bodies match the working files, and the full
+persisted configuration fingerprint matches the pre-change state.
+
+## Deferred work
+
+Broader automated browser and screen-reader coverage can be considered if the
+project proceeds beyond this accepted demonstration. No further browser testing
+is required for the current viability scope.
+
+Production harness adaptation is explicitly deferred and remains governed by
 [the production boundary](PRODUCTION_DATABASE_BOUNDARY.md); standalone scripts
 must not depend on application packages.

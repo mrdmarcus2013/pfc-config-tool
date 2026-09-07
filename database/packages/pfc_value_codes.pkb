@@ -9,7 +9,12 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
 
     FUNCTION values_equal(p_left VARCHAR2, p_right VARCHAR2) RETURN BOOLEAN IS
     BEGIN
-        RETURN p_left = p_right OR (p_left IS NULL AND p_right IS NULL);
+        IF p_left IS NULL THEN
+            RETURN p_right IS NULL;
+        ELSIF p_right IS NULL THEN
+            RETURN FALSE;
+        END IF;
+        RETURN p_left = p_right;
     END;
 
     FUNCTION normalize_lob(p_line_of_business t_line_of_business)

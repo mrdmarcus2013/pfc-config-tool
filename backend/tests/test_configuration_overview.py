@@ -13,6 +13,7 @@ from backend.app.models import (
     ValueCodesCurrentResponse,
 )
 from backend.app.services.configuration import ConfigurationService
+from backend.tests.test_configuration_service import make_value_codes_current_connection
 
 
 @pytest.fixture
@@ -29,8 +30,10 @@ def resolved_field_states():
         "39-41": ValueCodesCurrentResponse(
             configuration_status="RESOLVED",
             line_of_business="HOME_HEALTH",
-            is_default=False,
-            selections=ValueCodeSelections(cbsa=True),
+            is_default=True,
+            selections=ValueCodeSelections(),
+            effective_selections=ValueCodeSelections(cbsa=True),
+            inherited_selections=ValueCodeSelections(cbsa=True),
             canonical_status="CANONICAL",
             display_summary="CBSA (inherited)",
             pfc_guid="synthetic-pfc",
@@ -67,8 +70,50 @@ def test_overview_preserves_other_fields_when_one_cannot_resolve(monkeypatch, re
     assert result["77"]["error"]["category"] == "ambiguous_source"
     assert all(result[field]["status"] == "RESOLVED" for field in ("81", "80", "39-41"))
     assert all(call["plan_guid"] == "synthetic-plan" for call in calls)
+    value_codes = result["39-41"]["current"]
+    assert not any(value_codes["selections"].values())
+    assert value_codes["effective_selections"]["cbsa"] is True
+    assert value_codes["inherited_selections"]["cbsa"] is True
     # Partial failures must remain valid at the API response boundary too.
     ConfigurationOverviewResponse.model_validate({"fields": result})
+
+
+@pytest.mark.parametrize("raw_metadata", ['{"cbsa":true}', None])
+def test_overview_distinguishes_invalid_metadata_from_unknown_capabilities(
+    monkeypatch, resolved_field_states, raw_metadata,
+):
+    connection = make_value_codes_current_connection(effective_selections=raw_metadata)
+    service = ConfigurationService(lambda: connection)
+    monkeypatch.setattr(service, "line_of_business_current", lambda **kwargs: {
+        "status": "DEFINED", "line_of_business": "HOME_HEALTH",
+    })
+    facility = CurrentConfigurationResponse(
+        status="RESOLVED", field_number="77", capability="service-facility",
+        effective_option_code="SERVICE_FACILITY_ALWAYS_ADDRESS_YES",
+        display=CurrentConfigurationDisplay(mode="ALWAYS", report_address="Y"),
+        pfc_guid="synthetic-pfc",
+    ).model_dump()
+    monkeypatch.setattr(service, "current", lambda **kwargs: (
+        facility if kwargs["field_number"] == "77" else resolved_field_states["81"]
+    ))
+    monkeypatch.setattr(service, "remarks_current", lambda **kwargs: resolved_field_states["80"])
+
+    response = service.overview(payor_guid="synthetic-payor", plan_guid="synthetic-plan")
+
+    fields = response["fields"]
+    assert all(fields[field]["status"] == "RESOLVED" for field in ("77", "80", "81"))
+    if raw_metadata is None:
+        assert fields["39-41"]["status"] == "RESOLVED"
+        assert fields["39-41"]["current"]["effective_selections"] is None
+    else:
+        assert fields["39-41"]["status"] == "UNAVAILABLE"
+        assert fields["39-41"]["error"] == {
+            "category": "application_failure", "message": "Value Codes could not be resolved safely.",
+        }
+    assert connection._cursor.binds["plan_guid"] == "synthetic-plan"
+    assert connection.rollbacks == 1
+    assert connection.commits == 0
+    ConfigurationOverviewResponse.model_validate(response)
 
 
 def test_overview_api_requires_lob_without_reading_configuration(monkeypatch):

@@ -148,6 +148,20 @@ translated to safe user messages; raw Oracle details are not rendered.
 After that fresh read confirms the requested state, the completion footer shows
 only **Close**; dismissing it performs no API or database action.
 
+Value Codes separates the inheritance choice from its displayed capabilities.
+Use inherited settings shows the inherited CBSA, FIPS, or Hospice capabilities
+as checked, read-only boxes. Customize starts with the effective values and
+enables editing. Choosing inheritance while editing an override displays the
+parent's capabilities, not those of the override. Unknown capabilities are
+described as unknown rather than shown as unchecked.
+
+The wire request remains unchanged: all false means Default. Empty custom
+selections cannot be previewed. Apply confirmation compares effective values
+for custom requests, allowing the minimal-override engine to return inheritance
+when it matches. A stale-preview failure refreshes current/inherited metadata
+while retaining the user's proposal. Deploy the Value Codes display package
+upgrade before restarting the backend that requires these response fields.
+
 ## Keyboard and focus
 
 Editors and confirmations share modal focus handling. Opening an editor focuses
@@ -177,5 +191,6 @@ entry points. The production build is emitted to the ignored `dist` directory.
 
 Modal tests exercise the actual focus controller with a simulated DOM and check
 server-rendered markup. They do not substitute for browser-native keyboard,
-layout, or screen-reader verification; those checks remain pending until browser
-automation is connected.
+layout, or screen-reader verification. On September 7, 2026, the user reported
+that their browser testing passed and was sufficient for the viability build.
+Additional automated browser coverage is deferred beyond this demonstration.

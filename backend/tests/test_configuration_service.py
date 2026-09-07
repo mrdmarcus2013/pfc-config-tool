@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import oracledb
@@ -238,16 +239,24 @@ def make_support_context_catalog_connection():
     return Connection(cursor)
 
 
-def make_value_codes_current_connection():
+def make_value_codes_current_connection(**overrides):
     columns = ["CONFIGURATION_STATUS", "LINE_OF_BUSINESS", "IS_DEFAULT",
         "CBSA", "FIPS", "CARE_LOCATION_VALUE_CODE",
         "PATIENT_ENTERED_VALUE_CODE", "COVERED_DAYS_VALUE_CODE",
         "CANONICAL_STATUS", "DISPLAY_SUMMARY", "PFC_GUID",
         "BILLING_FORM_CODE", "SOURCE_ELECTRONIC_REC_GUID",
-        "EXISTING_PAYOR_HER_COUNT", "EXISTING_PAYOR_HEF_COUNT", "STATE_HASH"]
+        "EXISTING_PAYOR_HER_COUNT", "EXISTING_PAYOR_HEF_COUNT", "STATE_HASH",
+        "EFFECTIVE_SELECTIONS", "INHERITED_SELECTIONS"]
+    selections = json.dumps({
+        "cbsa": False, "fips": False, "care_location_value_code": False,
+        "patient_entered_value_code": False, "covered_days_value_code": False,
+    })
     row = ["RESOLVED", "HOME_HEALTH", "Y", "N", "N", "N", "N", "N",
         "INHERITED", "Default", "synthetic-pfc", "837I_5010",
-        "synthetic-source", 0, 0, HASH]
+        "synthetic-source", 0, 0, HASH, selections, selections]
+    values = dict(zip(columns, row, strict=True))
+    values.update({key.upper(): value for key, value in overrides.items()})
+    columns, row = list(values), list(values.values())
     return Connection(CurrentProcedureCursor(ResultCursor(columns, [row])))
 
 

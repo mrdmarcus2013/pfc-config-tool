@@ -249,6 +249,8 @@ class ValueCodesCurrentResponse(BaseModel):
     line_of_business: LineOfBusiness
     is_default: bool
     selections: ValueCodeSelections
+    effective_selections: ValueCodeSelections | None
+    inherited_selections: ValueCodeSelections | None
     canonical_status: str
     display_summary: str
     pfc_guid: str

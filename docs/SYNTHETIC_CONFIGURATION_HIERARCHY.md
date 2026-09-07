@@ -57,7 +57,14 @@ in Tier 2 Technical details. Multiple component owners are displayed separately.
 Owner identifiers come from the effective HER, not the PFC's template fields.
 
 Inherited Value Codes show their actual capabilities in Current configuration.
-The proposed all-unchecked selection still means Default/inherit, not Off.
+The proposal has an explicit Use inherited settings choice. Its read-only
+checkboxes show the actual inherited capabilities, including CBSA and FIPS from
+a user template or the same-payor parent of a plan. Customize starts with the
+current effective capabilities. An empty custom choice requires either selecting
+a capability or choosing inheritance; it must not imply an Off override.
+The underlying all-false API request still means Default/inherit, not Off.
+Current responses expose separate effective and inherited selections, preserving
+unknown inherited capabilities as null rather than unchecked/disabled claims.
 Manual settings continue through Preview/Apply and the minimal-override engine.
 Template switching is not a new UI feature in this change; its future workflow
 must validate template/LOB compatibility, refresh current settings and reconcile

@@ -98,6 +98,52 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
         l_canonical_status VARCHAR2(40);
         l_summary_text VARCHAR2(200);
         l_selected pfc_value_codes.t_selections := pfc_value_codes.no_selections;
+        l_inherited_json VARCHAR2(1000);
+        l_effective_json VARCHAR2(1000);
+
+        FUNCTION selections_json(p_value pfc_value_codes.t_selections)
+            RETURN VARCHAR2
+        IS
+            FUNCTION json_flag(p_flag VARCHAR2) RETURN VARCHAR2 IS
+            BEGIN
+                RETURN CASE p_flag WHEN 'Y' THEN 'true' ELSE 'false' END;
+            END;
+        BEGIN
+            RETURN '{"cbsa":' || json_flag(p_value.cbsa) ||
+                ',"fips":' || json_flag(p_value.fips) ||
+                ',"care_location_value_code":' || json_flag(p_value.care_location_value_code) ||
+                ',"patient_entered_value_code":' || json_flag(p_value.patient_entered_value_code) ||
+                ',"covered_days_value_code":' || json_flag(p_value.covered_days_value_code) || '}';
+        END;
+
+        FUNCTION inherited_selections_json RETURN VARCHAR2 IS
+            l_value pfc_value_codes.t_selections := pfc_value_codes.no_selections;
+        BEGIN
+            CASE l_recipe
+                WHEN pfc_value_codes.c_recipe_home_health_cbsa THEN
+                    l_value.cbsa := 'Y';
+                WHEN pfc_value_codes.c_recipe_home_health_cbsa_fips THEN
+                    l_value.cbsa := 'Y'; l_value.fips := 'Y';
+                WHEN pfc_value_codes.c_recipe_hospice_61_g8 THEN
+                    l_value.care_location_value_code := 'Y';
+                WHEN pfc_value_codes.c_recipe_hospice_61_g8_vc80 THEN
+                    l_value.care_location_value_code := 'Y'; l_value.covered_days_value_code := 'Y';
+                WHEN pfc_value_codes.c_recipe_hospice_patient THEN
+                    l_value.patient_entered_value_code := 'Y';
+                WHEN pfc_value_codes.c_recipe_hospice_patient_vc80 THEN
+                    l_value.patient_entered_value_code := 'Y'; l_value.covered_days_value_code := 'Y';
+                WHEN pfc_value_codes.c_recipe_hospice_vc80 THEN
+                    l_value.covered_days_value_code := 'Y';
+                ELSE
+                    -- Default inspection has already validated inherited HER safety.
+                    -- An unrecognized enabled configuration is not known to be Off.
+                    IF l_inherited.her_sto_proc_name <> 'RETURN_0'
+                       OR l_inherited.her_sto_proc_name IS NULL THEN
+                        RETURN NULL;
+                    END IF;
+            END CASE;
+            RETURN selections_json(l_value);
+        END;
 
         PROCEDURE try_candidate(p_value pfc_value_codes.t_selections) IS
         BEGIN
@@ -165,18 +211,20 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
             END IF;
         END IF;
 
+        SELECT sto_proc_name INTO l_inherited.her_sto_proc_name
+        FROM hcfa_electronic_records WHERE electronic_rec_guid = l_engine.source_guid;
+        FOR f IN (SELECT field_number, field_name, sto_proc_name, hard_coded_data
+            FROM hcfa_electronic_fields WHERE electronic_rec_guid = l_engine.source_guid) LOOP
+            l_i := l_i + 1;
+            l_inherited.hefs(l_i).field_number := f.field_number;
+            l_inherited.hefs(l_i).field_name := f.field_name;
+            l_inherited.hefs(l_i).sto_proc_name := f.sto_proc_name;
+            l_inherited.hefs(l_i).hard_coded_data := f.hard_coded_data;
+        END LOOP;
+        l_recipe := pfc_value_codes.recognize_state(l_lob, l_inherited);
+        l_inherited_json := inherited_selections_json;
         IF l_is_default = 'Y' THEN
-            SELECT sto_proc_name INTO l_inherited.her_sto_proc_name
-            FROM hcfa_electronic_records WHERE electronic_rec_guid = l_engine.source_guid;
-            FOR f IN (SELECT field_number, field_name, sto_proc_name, hard_coded_data
-                FROM hcfa_electronic_fields WHERE electronic_rec_guid = l_engine.source_guid) LOOP
-                l_i := l_i + 1;
-                l_inherited.hefs(l_i).field_number := f.field_number;
-                l_inherited.hefs(l_i).field_name := f.field_name;
-                l_inherited.hefs(l_i).sto_proc_name := f.sto_proc_name;
-                l_inherited.hefs(l_i).hard_coded_data := f.hard_coded_data;
-            END LOOP;
-            l_recipe := pfc_value_codes.recognize_state(l_lob, l_inherited);
+            l_effective_json := l_inherited_json;
             l_summary_text := CASE l_recipe
                 WHEN 'HOME_HEALTH_CBSA' THEN 'CBSA (inherited)'
                 WHEN 'HOME_HEALTH_CBSA_FIPS' THEN 'CBSA and FIPS (inherited)'
@@ -186,6 +234,8 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
                 WHEN 'HOSPICE_PATIENT_VALUE_VC80_DAYS' THEN 'Patient-entered value code and amount and value code 80 with days covered (inherited)'
                 WHEN 'HOSPICE_VC80_DAYS' THEN 'Value code 80 with days covered (inherited)'
                 ELSE CASE WHEN l_inherited.her_sto_proc_name = 'RETURN_0' THEN 'Off (inherited)' ELSE 'Default' END END;
+        ELSIF l_canonical_status = 'CANONICAL_OVERRIDE' THEN
+            l_effective_json := selections_json(l_selected);
         END IF;
 
         l_owner_guid := l_engine.source_guid;
@@ -214,7 +264,9 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
             CAST(l_engine.existing_her_count AS NUMBER) existing_payor_her_count,
             CAST(l_engine.existing_hef_count AS NUMBER) existing_payor_hef_count,
             CAST(l_engine.state_hash AS VARCHAR2(64)) state_hash,
-            l_owners configuration_owners
+            l_owners configuration_owners,
+            CAST(l_effective_json AS VARCHAR2(1000)) effective_selections,
+            CAST(l_inherited_json AS VARCHAR2(1000)) inherited_selections
         FROM dual;
     END current_configuration;
 

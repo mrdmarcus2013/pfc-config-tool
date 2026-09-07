@@ -142,6 +142,8 @@ export interface ValueCodesCurrentResponse {
   line_of_business: LineOfBusiness;
   is_default: boolean;
   selections: ValueCodeSelections;
+  effective_selections: ValueCodeSelections | null;
+  inherited_selections: ValueCodeSelections | null;
   canonical_status: string;
   display_summary: string;
   pfc_guid: string;

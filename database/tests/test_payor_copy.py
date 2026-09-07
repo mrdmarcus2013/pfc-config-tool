@@ -6,8 +6,9 @@ import oracledb
 import pytest
 
 from backend.app.database import create_connection, get_oracle_settings
-from database.maintenance.rebuild_hierarchy import read_state, fingerprint, insert_rows, procedure_row
+from database.maintenance.rebuild_hierarchy import fingerprint, insert_rows, procedure_row
 from database.maintenance.seed_payor_copy import SOURCE, SOURCE_PLAN, DESTINATION, DESTINATION_PLANS, HISTORICAL_PFC
+from database.tests.plan_fixtures import database_state as read_state
 
 pytestmark=pytest.mark.skipif(os.getenv("RUN_ORACLE_COPY")!="1",reason="Set RUN_ORACLE_COPY=1 for the dedicated local copy demos")
 
@@ -31,7 +32,23 @@ def q():
                 assert fingerprint(read_state(q))==before
 
 
+def require_destination_copy(q):
+    """Arrange a missing destination setting even after the interactive demo was copied.
+
+    The fixture owns rollback; saved demo settings are restored after the test.
+    """
+    q.execute("""DELETE FROM hcfa_electronic_fields WHERE electronic_rec_guid IN (
+        SELECT electronic_rec_guid FROM hcfa_electronic_records
+        WHERE payor_guid=:destination AND plan_guid IS NULL AND record_type_code='SYN_COPY_UNKNOWN')""",
+              destination=DESTINATION)
+    q.execute("""DELETE FROM hcfa_electronic_records WHERE payor_guid=:destination
+        AND plan_guid IS NULL AND record_type_code='SYN_COPY_UNKNOWN'""", destination=DESTINATION)
+
+
 def test_preview_readonly_apply_flattens_and_clears_every_plan(q):
+    from database.maintenance.seed_payor_plans import apply_option
+    require_destination_copy(q)
+    apply_option(q, DESTINATION, DESTINATION_PLANS[0], 'SERVICE_FACILITY_CONDITIONAL_ADDRESS_NO')
     before=read_state(q)
     preview=run(q)
     assert preview["status"]=="READY" and len(preview["contexts"])==3
@@ -56,7 +73,7 @@ def test_preview_readonly_apply_flattens_and_clears_every_plan(q):
     records={r[0] for r in q}
     assert "SYN_COPY_UNKNOWN" in records and "SYN_COPY_EXTRA" not in records
     repeat=run(q)
-    assert repeat["status"]=="NO_CHANGE" and repeat["records_kept"]==preview["records_copied"]
+    assert repeat["status"]=="NO_CHANGE" and repeat["records_kept"]==preview["records_copied"]+preview["records_kept"]
 
 
 def test_destination_catalog_matches_live_preview_without_changes(q):
@@ -158,6 +175,7 @@ def test_failure_after_mutation_restores_full_destination(q):
                     END IF;
                 END;""")
     try:
+        require_destination_copy(q)
         before=fingerprint(read_state(q)); preview=run(q)
         with pytest.raises(oracledb.DatabaseError,match="20998"):
             run(q,"APPLY",preview["state_hash"])
@@ -169,6 +187,7 @@ def test_failure_after_mutation_restores_full_destination(q):
 
 
 def test_explicit_safety_normalization_changes_only_destination(q):
+    require_destination_copy(q)
     q.execute("UPDATE hcfa_electronic_records SET mandatory_ind='Y',carry_forward_ind='Y',include_record_data_onclaim='N' WHERE electronic_rec_guid='F4000000-0000-0000-0000-000000000001'")
     preview=run(q)
     assert preview["records_normalized"]>0

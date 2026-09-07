@@ -19,7 +19,7 @@ test("39-41 is one grouped Value Codes capability", () => {
   assert.equal(catalogFieldIsAvailable(field, metadata), true);
 });
 
-test("DEFAULT remains all unchecked and never infers from inherited source", () => {
+test("the API Default request remains all false regardless of displayed inheritance", () => {
   const selections = emptyValueCodeSelections();
   assert.equal(Object.values(selections).some(Boolean), false);
   assert.equal(valueCodesSummary("HOME_HEALTH", selections), "Default");
@@ -83,12 +83,13 @@ test("selection identity includes saved LOB and every structured flag", () => {
 test("editor exposes LOB-specific controls and keeps diagnostics gated", () => {
   const root = dirname(dirname(fileURLToPath(import.meta.url)));
   const source = readFileSync(join(root, "src", "app", "value-codes-editor.tsx"), "utf8");
-  assert.match(source, /Add CBSA/); assert.match(source, /Add FIPS/);
-  assert.match(source, /Add care-location value code 61\/G8/);
-  assert.match(source, /Add patient-entered value code and amount/);
-  assert.match(source, /Add value code 80 with days covered/);
-  assert.match(source, /disabled=\{hospiceValueIsDisabled\(selected, "care_location_value_code"\)\}/);
-  assert.match(source, /disabled=\{hospiceValueIsDisabled\(selected, "patient_entered_value_code"\)\}/);
-  assert.doesNotMatch(source, />A3</);
+  const proposal = readFileSync(join(root, "src", "app", "value-codes-proposal.tsx"), "utf8");
+  assert.match(proposal, /Report CBSA/); assert.match(proposal, /Report FIPS/);
+  assert.match(proposal, /Report care-location value code 61\/G8/);
+  assert.match(proposal, /Report patient-entered value code and amount/);
+  assert.match(proposal, /Report value code 80 with days covered/);
+  assert.match(proposal, /disabled=\{hospiceValueIsDisabled\(shown, "care_location_value_code"\)\}/);
+  assert.match(proposal, /disabled=\{hospiceValueIsDisabled\(shown, "patient_entered_value_code"\)\}/);
+  assert.doesNotMatch(proposal, />A3</);
   assert.match(source, /supportDeveloperMode && <details/);
 });
