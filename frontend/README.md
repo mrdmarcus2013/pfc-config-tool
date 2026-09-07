@@ -42,7 +42,9 @@ Service Facility and Taxonomy inherit Off, and Remarks use the standard source.
 The [hierarchy checkpoint](../docs/SYNTHETIC_CONFIGURATION_HIERARCHY.md) documents
 all payor assignments. Current-setting Technical details show each effective
 HER's configuration level owner. An inherited Value Codes summary shows its
-actual capabilities; unchecked proposed selections continue to mean inheritance.
+actual capabilities. Use inherited settings displays read-only checkboxes
+reflecting those values; Customize enables changes. The API's all-false request
+still means inheritance, independently of those displayed checkboxes.
 
 MatrixCare host integration is future work. A host launch is expected to supply
 `payor_guid`, nullable `plan_guid`, `pfc_guid`, and the authenticated audit-user
@@ -150,7 +152,7 @@ only **Close**; dismissing it performs no API or database action.
 
 Value Codes separates the inheritance choice from its displayed capabilities.
 Use inherited settings shows the inherited CBSA, FIPS, or Hospice capabilities
-as checked, read-only boxes. Customize starts with the effective values and
+in read-only checkboxes reflecting their values. Customize starts with the effective values and
 enables editing. Choosing inheritance while editing an override displays the
 parent's capabilities, not those of the override. Unknown capabilities are
 described as unknown rather than shown as unchecked.

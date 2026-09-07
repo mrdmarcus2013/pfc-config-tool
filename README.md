@@ -1,5 +1,8 @@
 # PFC Configuration Tool
 
+For project-manager, developer and end-user discussions, see the
+[viability demonstration Q&A](docs/VIABILITY_DEMO_QA.md).
+
 The header now includes **COPY PAYOR SETTINGS**, with a destination-wide preview
 and atomic acceptance. See [Payor Copy rules](docs/PFC_COPY_RULES.md).
 
