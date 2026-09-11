@@ -199,8 +199,13 @@ accepts only structured Y/N flags; private recipe codes are never advertised.
 The generic engine remains authoritative for PFC/source resolution, complete
 source cloning, four-field overlays (`HI012`, `HI015`, `HI022`, `HI025`),
 minimal overrides, hashes, locking, verification, and transactions. An empty
-selection is a source-derived Default and therefore always has zero canonical
-payor overrides. The legacy generic Value Codes values are diagnostic fallback
+selection in the legacy API mode is a source-derived Default and therefore has
+zero canonical overrides at the selected editing level. The direct-control UI
+instead sends `empty_selection_behavior='OFF'`: Home Health removes the four
+managed CBSA/FIPS substitutions in favor of generic patient-entered values while
+preserving the source HER gate; Hospice sets its HER to `RETURN_0` and preserves
+the complete HEF set. These explicit requests use the same minimal-override
+engine. The legacy generic Value Codes values are diagnostic fallback
 knowledge only: without a complete eligible source, the engine blocks instead
 of inventing the remaining production HEFs.
 

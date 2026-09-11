@@ -1,6 +1,7 @@
 # PFC viability demonstration: questions and answers
 
-Prepared September 7, 2026, for the accepted application checkpoint `3d90904`.
+Initially prepared September 7, 2026, for the accepted checkpoint `3d90904`;
+updated September 11 for direct Value Codes controls and end-user presentation.
 These answers describe the working demonstration. Production work is deferred.
 The database contains synthetic data modeled on known MatrixCare schema and
 configuration behavior, with explicitly identified additions for the tool.
@@ -49,6 +50,11 @@ record-level configuration. HEF (`HCFA_ELECTRONIC_FIELDS`) holds the individual
 field definitions linked to an HER. Ordinary field edits primarily manage
 HER/HEF overrides. Copy also updates the destination PFC's two template
 associations; there is no additional, separate "PFC template" being copied.
+Copy preserves source records. A new destination HER receives its own identifier,
+the destination `PAYOR_GUID` and `PLAN_GUID = NULL`; its copied HEFs link to that
+new parent. An already matching canonical destination record can be retained.
+All current authoritative destination PFCs adopt the source's respective template
+associations; historical and non-winning PFCs remain unchanged.
 
 **6. How do you ensure a plan belongs to only one payor?**
 
@@ -74,6 +80,9 @@ only managed values, and applies the documented safety rules. If the result
 already equals inheritance, the engine avoids or removes an unnecessary
 override. Cleanup stays within the selected editing scope and managed targets;
 parent and sibling-plan records are preserved during a plan edit.
+Copy is a one-time operation on payor/plan overrides. Shared form and user
+templates can still affect both payors after Copy; it does not freeze future
+template behavior.
 
 **9. Which logic runs in React, Python and Oracle?**
 
@@ -84,6 +93,10 @@ compares desired settings, calculates preview hashes and performs mutations.
 The application packages are part of this tool. For example, Oracle now returns
 structured effective and inherited Value Code flags; the UI does not infer
 enabled capabilities from a text label.
+Tier 2 uses the same frontend with additional collapsed Technical Details,
+enabled locally by `VITE_ENABLE_TECHNICAL_DETAILS`. This is a display setting,
+not an authenticated permission role. The demonstration's audit identity comes
+from its development launch context.
 
 **10. What prevents a stale preview or a partially saved configuration?**
 
@@ -103,11 +116,21 @@ Value Codes or Remarks. Managed-target registration also determines LOB reset
 scope. A visible claim box or a newly added database record does not
 automatically become an editable feature.
 
+Presentation standard: end-user guidance should explain current settings,
+available actions and their consequences in plain language. Keep database
+identifiers, template and inheritance mechanics, procedure names, environment
+settings and audit/authorization setup in developer references or collapsed
+Technical Details available only in Tier 2. Even in Tier 2, the ordinary screen
+outside those collapsed details follows the same plain-language standard.
+Explain payor-versus-plan impact without requiring users to understand the
+implementation.
+
 Developer references: [local schema](../database/01_schema.sql),
 [database model and limitations](../database/README.md),
 [engine rules](CLAIM_CONFIGURATION_ENGINE_RULES.md),
 [plan ownership and hierarchy](PAYOR_PLAN_CONFIGURATION.md),
-[LOB implementation](../database/packages/pfc_line_of_business.pkb).
+[LOB implementation](../database/packages/pfc_line_of_business.pkb),
+[frontend setup and Technical Details](../frontend/README.md).
 
 ## Project manager questions
 
@@ -138,10 +161,12 @@ demo settings.
 
 **15. What evidence supports the demonstration?**
 
-The accepted checkpoint passed 136 frontend tests, 527 Python tests and the
+September 11 verification passed 148 frontend tests, 606 Python tests and the
 frontend build/typecheck; 39 environment-gated Python tests were skipped.
-Comparison also preserved 706 read/preview cases and 35 rollback-only Apply
-cases, excluding only the intentionally added Value Codes Current metadata.
+All 706 read/preview cases and 35 rollback-only Apply cases exactly matched a
+fresh pre-change baseline, preserving existing API behavior. New tests cover
+explicit Value Codes Off and the Tier 2 presentation boundary. The later
+All Plans label change also passed the selector tests and typecheck.
 The user reported sufficient successful manual browser testing for this demo.
 Agent automation did not establish full mounted-browser or screen-reader
 coverage. These results support the tested configuration workflows.
@@ -177,25 +202,26 @@ Project references: [accepted version and verification](REFACTOR_STAGES.md),
 
 **19. Am I changing the payor or just one plan?**
 
-Choose **Payor-level settings** to edit the shared payor level. Choose a named
-plan to edit only that plan's overrides. A payor-level change can affect plans
-that inherit that setting; their own applicable overrides retain precedence.
-Changing the selected payor resets the Plan selection to Payor-level settings.
+Choose **All Plans** to change the payor's shared settings. Those
+changes can also affect its plans, unless a plan has its own setting for that
+choice. Choose a named plan to change that plan only. Selecting a different
+payor resets Plan to All Plans.
 
-**20. Does Default mean the setting is disabled?**
+**20. Does Use standard remarks turn remarks off?**
 
-No. Default, or **Use inherited settings**, removes the customization at the
-level being edited and uses the applicable parent configuration. That parent
-may enable or disable the capability. A plan can inherit its payor's settings;
-the template and billing-form levels supply the remaining inheritance.
+It chooses the standard remarks for the selected payor or plan. It is not an
+on/off control. Choose **Use a custom remark** when you need to supply specific
+text. For other settings, use Current configuration and the selected choices
+to see what is enabled.
 
-**21. Why are CBSA and FIPS checked but unavailable to click?**
+**21. How do I turn CBSA and FIPS on or off?**
 
-They are enabled through inherited settings. Choose **Customize for this
-payor** or **Customize for this plan** to edit them; the checkboxes start with
-the effective values. FIPS requires CBSA. The current Value Codes editor does
-not offer an explicit all-capabilities-Off override: empty custom selections
-cannot be previewed, and choosing inheritance uses whatever the parent supplies.
+The checkboxes show the current settings. Check or clear them, then Preview
+and Apply. FIPS requires CBSA: turning FIPS on also turns CBSA on, and turning
+CBSA off clears both. With both off, the automatic CBSA/FIPS additions stop;
+ordinary patient-entered Value Codes remain available where the payor's setup
+allows them. If a current value is unknown, the tool marks it as unknown.
+Choose its desired on/off state before Preview.
 
 **22. Why must I Preview before Apply?**
 
@@ -206,70 +232,59 @@ proposal also invalidates its previous Preview.
 
 **23. What exactly does Copy Payor Settings change?**
 
-It combines the source payor's settings with those of the selected source plan,
-with that plan winning where both define the same logical record. It applies
-that combined set as destination payor-level settings, removes destination-only
-settings in scope, and clears destination plan overrides. Every current
-authoritative destination PFC, both no-plan and plan-specific, adopts the
-source PFC's respective form-template and user-template associations. Historical
-or non-winning PFCs are left alone. Preview shows the copy, keep, removal and
-template-association changes before confirmation.
+It sets up the destination payor and all its current plans to match the selected
+source configuration within the supported billing-form scope. If you select a
+source plan, its specific choices take priority over the source payor's shared
+choices. Copy replaces differing destination settings, removes destination-only
+settings in scope and clears all destination plan customizations in that scope.
+You can add plan-specific changes afterward. Preview shows what will be copied,
+kept and removed before you confirm.
 
-**24. Does the source keep its settings, and are the copied records separate?**
+**24. Does the source keep its settings?**
 
-Yes. Source records stay unchanged. When a new destination HER is needed, it
-gets a new identifier, the destination `PAYOR_GUID`, and `PLAN_GUID = NULL`.
-Its copied HEFs point to that new parent. A canonical matching destination
-record can be kept. The source and destination therefore retain their own
-records; Copy does not transfer ownership away from the source.
+Yes. Copy leaves the source payor and its plans unchanged. The destination
+receives its own saved setup. You can make further payor or plan changes after
+the copy.
 
 **25. Why is a destination missing from the Copy dropdown?**
 
-Only eligible payors from the synthetic demo catalog appear. A destination must
-be a different payor with matching billing form and LOB, an eligible no-plan
-PFC, and valid affected plan contexts. Oracle also checks that the proposed
-complete configuration can match the source safely. Ambiguous or unsupported
-states can exclude it. An invalid source produces an error; an empty list means
-that no catalog destination qualifies for that valid source.
+Only eligible payors appear. The destination must be a different payor with the
+same billing form and Line of Business. It also needs a valid setup that can
+accept the copied configuration for the payor and its plans. A configuration
+the tool cannot safely handle can make a payor unavailable. A problem with the
+source produces an error; an empty list means there are currently no eligible
+destinations for that source.
 
 **26. What happens to settings the screen cannot edit individually?**
 
-Ordinary field editing retains the source's unmanaged field details. Copy
-includes qualifying configuration record types beyond the four editable areas,
-and can remove destination-only settings and plan overrides in its supported
-scope. It does not silently discard unsupported configurations to make a copy
-pass. Review the Copy details, especially the settings being removed.
+An ordinary field change updates the selected feature while retaining other
+configuration details. Copy covers the complete supported claim configuration,
+including settings that do not have their own editor. It can remove
+destination-only settings and clears plan customizations in that scope. If the
+tool cannot safely handle a configuration, it blocks the copy. Review the Copy
+details, especially the settings being removed.
 
-**27. Can I undo a saved change by choosing Default?**
+**27. Can I undo a saved change?**
 
 There is no one-click historical Undo in this demo. Cancel before Apply leaves
 saved settings unchanged. After a successful Apply, you can make another
-reviewed change. Default uses the current inherited configuration; it does not
-recover an earlier custom configuration or reverse a completed Copy.
+reviewed change to restore previous choices if you know what they were. Choosing
+standard remarks does not recover earlier custom text, and a completed Copy
+cannot be reversed automatically.
 
 **28. Does Copy keep the two payors synchronized afterward?**
 
-It is a one-time operation. Later edits to source payor/plan overrides do not
-automatically update the destination. Both payors can reference the same shared
-form and user templates after Copy, so later changes to applicable shared
-templates can affect inherited settings on both. The copy is not a frozen
-snapshot of all future template behavior.
+It is a one-time setup action. Later changes made for the source payor or one
+of its plans are not automatically copied to the destination. Either payor's
+settings can still change afterward; Copy does not lock their future setup.
 
-**29. Can I create a payor, plan or PFC, or copy into just one destination plan?**
+**29. Can I create a payor or plan, or copy into just one destination plan?**
 
-Those operations are not included. The tool selects existing configured payors
-and owned plans. Copy can read from a selected source plan, but its destination
-is the payor as a whole; it does not offer a destination-plan selector.
+Those operations are not included. The tool works with existing payors and the
+plans belonging to each payor. You can copy from a selected source plan, but
+the destination is the payor as a whole, including its current plans.
 
 **30. Is Tier 2 a different tool?**
 
-It is the same application with additional collapsed Technical Details enabled
-through the local `VITE_ENABLE_TECHNICAL_DETAILS` setting. Those details expose
-configuration identifiers and diagnostic information. The setting is a display
-mode, not an authenticated permission role. The demonstration's audit identity
-comes from its development launch context.
-
-End-user references: [frontend guide](../frontend/README.md),
-[payor and plan behavior](PAYOR_PLAN_CONFIGURATION.md),
-[Copy rules](PFC_COPY_RULES.md),
-[Value Codes inheritance](SYNTHETIC_CONFIGURATION_HIERARCHY.md).
+It is the same application with additional collapsed **Technical Details** for
+support staff. The settings and Preview/Apply workflow are the same.

@@ -19,18 +19,18 @@ test("39-41 is one grouped Value Codes capability", () => {
   assert.equal(catalogFieldIsAvailable(field, metadata), true);
 });
 
-test("the API Default request remains all false regardless of displayed inheritance", () => {
+test("empty explicit selections describe Off for each Line of Business", () => {
   const selections = emptyValueCodeSelections();
   assert.equal(Object.values(selections).some(Boolean), false);
-  assert.equal(valueCodesSummary("HOME_HEALTH", selections), "Default");
-  assert.equal(valueCodesSummary("HOSPICE", selections), "Default");
+  assert.equal(valueCodesSummary("HOME_HEALTH", selections), "CBSA Off; FIPS Off");
+  assert.equal(valueCodesSummary("HOSPICE", selections), "Value Codes Off");
 });
 
 test("Home Health FIPS implies CBSA and clearing CBSA clears FIPS", () => {
   const withFips = setHomeHealthValue(emptyValueCodeSelections(), "fips", true);
   assert.equal(withFips.cbsa, true);
   assert.equal(withFips.fips, true);
-  assert.equal(valueCodesSummary("HOME_HEALTH", withFips), "CBSA and FIPS");
+  assert.equal(valueCodesSummary("HOME_HEALTH", withFips), "CBSA On; FIPS On");
   assert.deepEqual(setHomeHealthValue(withFips, "cbsa", false), emptyValueCodeSelections());
 });
 
@@ -77,6 +77,10 @@ test("selection identity includes saved LOB and every structured flag", () => {
     valueCodeSelectionIdentity(context, "HOME_HEALTH", cbsa));
   assert.notEqual(valueCodeSelectionIdentity(context, "HOME_HEALTH", none),
     valueCodeSelectionIdentity(context, "HOSPICE", none));
+  assert.notEqual(valueCodeSelectionIdentity(context, "HOME_HEALTH", none),
+    valueCodeSelectionIdentity(context, "HOME_HEALTH", { ...none, cbsa: null, fips: null }));
+  assert.notEqual(valueCodeSelectionIdentity(context, "HOME_HEALTH", none),
+    valueCodeSelectionIdentity({ ...context, plan_guid: "plan" }, "HOME_HEALTH", none));
   assert.equal(valueCodeSelectionsEqual(none, emptyValueCodeSelections()), true);
 });
 
@@ -88,8 +92,8 @@ test("editor exposes LOB-specific controls and keeps diagnostics gated", () => {
   assert.match(proposal, /Report care-location value code 61\/G8/);
   assert.match(proposal, /Report patient-entered value code and amount/);
   assert.match(proposal, /Report value code 80 with days covered/);
-  assert.match(proposal, /disabled=\{hospiceValueIsDisabled\(shown, "care_location_value_code"\)\}/);
-  assert.match(proposal, /disabled=\{hospiceValueIsDisabled\(shown, "patient_entered_value_code"\)\}/);
+  assert.match(proposal, /disabled=\{hospiceValueIsDisabled\(draft, "care_location_value_code"\)\}/);
+  assert.match(proposal, /disabled=\{hospiceValueIsDisabled\(draft, "patient_entered_value_code"\)\}/);
   assert.doesNotMatch(proposal, />A3</);
   assert.match(source, /supportDeveloperMode && <details/);
 });

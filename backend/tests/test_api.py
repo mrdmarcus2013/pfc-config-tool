@@ -157,9 +157,10 @@ class StubService:
     @staticmethod
     def _value_codes_result(status, request):
         selections = request["selections"]
-        return {"status": status, "is_default": not any(selections.values()),
+        is_default = not any(selections.values()) and request["empty_selection_behavior"] == "INHERIT"
+        return {"status": status, "is_default": is_default,
                 "selections": selections,
-                "display_summary": "Default" if not any(selections.values()) else "CBSA",
+                "display_summary": "Default" if is_default else ("CBSA" if any(selections.values()) else "Off"),
                 "state_hash": HASH, "change_count": 1,
                 "summary": "1 configuration change(s) is ready for review.",
                 "pfc_guid": "30000000-0000-0000-0000-0000000000A1",

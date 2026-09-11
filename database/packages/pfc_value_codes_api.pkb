@@ -45,7 +45,8 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
         p_plan_guid  IN pfc.plan_guid%TYPE,
         p_lob        IN pfc_value_codes.t_line_of_business,
         p_selections IN pfc_value_codes.t_selections,
-        p_result     OUT t_engine_result
+        p_result     OUT t_engine_result,
+        p_empty_selection_behavior IN VARCHAR2 DEFAULT 'INHERIT'
     )
     IS
         l_summary SYS_REFCURSOR;
@@ -58,7 +59,7 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
         l_new_hef_count PLS_INTEGER;
         l_change_count PLS_INTEGER;
     BEGIN
-        l_option_code := pfc_value_codes.private_option_code(p_lob, p_selections);
+        l_option_code := pfc_value_codes.private_option_code(p_lob, p_selections, p_empty_selection_behavior);
         pfc_apply_option(
             p_payor_guid, p_plan_guid, l_option_code, 'VALUE_CODES_CURRENT',
             'PREVIEW', NULL, l_summary, l_changes
@@ -120,6 +121,8 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
             l_value pfc_value_codes.t_selections := pfc_value_codes.no_selections;
         BEGIN
             CASE l_recipe
+                WHEN pfc_value_codes.c_recipe_home_health_neutral THEN NULL;
+                WHEN pfc_value_codes.c_recipe_hospice_off THEN NULL;
                 WHEN pfc_value_codes.c_recipe_home_health_cbsa THEN
                     l_value.cbsa := 'Y';
                 WHEN pfc_value_codes.c_recipe_home_health_cbsa_fips THEN
@@ -145,10 +148,11 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
             RETURN selections_json(l_value);
         END;
 
-        PROCEDURE try_candidate(p_value pfc_value_codes.t_selections) IS
+        PROCEDURE try_candidate(p_value pfc_value_codes.t_selections,
+            p_empty_selection_behavior VARCHAR2 DEFAULT 'INHERIT') IS
         BEGIN
             inspect_selection(p_payor_guid, p_plan_guid, l_lob,
-                p_value, l_candidate_engine);
+                p_value, l_candidate_engine, p_empty_selection_behavior);
             IF l_candidate_engine.current_matches_desired = 'Y' THEN
                 l_match_count := l_match_count + 1;
                 l_selected := p_value;
@@ -174,6 +178,7 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
             l_canonical_status := 'REDUNDANT_OVERRIDE';
             l_summary_text := 'Default';
         ELSE
+            try_candidate(l_none, 'OFF');
             IF l_lob = pfc_value_codes.c_home_health THEN
                 l_candidate := l_none;
                 l_candidate.cbsa := 'Y';
@@ -226,6 +231,10 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
         IF l_is_default = 'Y' THEN
             l_effective_json := l_inherited_json;
             l_summary_text := CASE l_recipe
+                WHEN 'HOME_HEALTH_NO_CBSA_FIPS' THEN
+                    CASE WHEN l_inherited.her_sto_proc_name = 'RETURN_0'
+                        THEN 'Off (inherited)' ELSE 'CBSA and FIPS off (inherited)' END
+                WHEN 'HOSPICE_OFF' THEN 'Off (inherited)'
                 WHEN 'HOME_HEALTH_CBSA' THEN 'CBSA (inherited)'
                 WHEN 'HOME_HEALTH_CBSA_FIPS' THEN 'CBSA and FIPS (inherited)'
                 WHEN 'HOSPICE_61_G8' THEN 'Care-location value code 61/G8 (inherited)'
@@ -282,18 +291,38 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
         p_mode                       IN VARCHAR2,
         p_expected_state_hash        IN VARCHAR2,
         p_summary                    OUT SYS_REFCURSOR,
-        p_changes                    OUT SYS_REFCURSOR
+        p_changes                    OUT SYS_REFCURSOR,
+        p_empty_selection_behavior IN VARCHAR2
     ) IS
         l_lob pfc_value_codes.t_line_of_business;
         l_selections pfc_value_codes.t_selections;
         l_option_code pfc_option_types.t_option_code;
+        l_off_check t_engine_result;
+        l_source_gate hcfa_electronic_records.sto_proc_name%TYPE;
     BEGIN
         l_lob := saved_lob(p_payor_guid,
             CASE WHEN p_mode = 'APPLY' THEN 'Y' ELSE 'N' END);
         l_selections := selections(p_cbsa, p_fips,
             p_care_location_value_code, p_patient_entered_value_code,
             p_covered_days_value_code);
-        l_option_code := pfc_value_codes.private_option_code(l_lob, l_selections);
+        l_option_code := pfc_value_codes.private_option_code(l_lob, l_selections, p_empty_selection_behavior);
+        IF l_lob = pfc_value_codes.c_home_health
+           AND l_option_code = pfc_value_codes.private_option_code(
+               pfc_value_codes.c_home_health, pfc_value_codes.no_selections, 'OFF') THEN
+            -- A neutral result that collapses into unknown inheritance cannot be
+            -- confirmed as checked-off capabilities. Inspect only this new path.
+            inspect_selection(p_payor_guid, p_plan_guid, l_lob, l_selections,
+                l_off_check, 'OFF');
+            IF l_off_check.target_action = 'REMOVE_OVERRIDE'
+               OR (l_off_check.target_action = 'NO_CHANGE' AND l_off_check.existing_her_count = 0) THEN
+                SELECT sto_proc_name INTO l_source_gate FROM hcfa_electronic_records
+                WHERE electronic_rec_guid = l_off_check.source_guid;
+                IF l_source_gate IS NULL OR l_source_gate NOT IN ('RETURN_1', 'RETURN_0') THEN
+                    RAISE_APPLICATION_ERROR(pfc_value_codes.c_err_invalid_state,
+                        'The inherited Value Codes settings cannot be confirmed safely. Review the inherited configuration before changing these selections.');
+                END IF;
+            END IF;
+        END IF;
         pfc_apply_option(p_payor_guid, p_plan_guid, l_option_code,
             p_audit_user, p_mode, p_expected_state_hash, p_summary, p_changes);
     END run_change;
@@ -304,13 +333,14 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
         p_care_location_value_code IN VARCHAR2, p_patient_entered_value_code IN VARCHAR2,
         p_covered_days_value_code IN VARCHAR2,
         p_audit_user IN hcfa_electronic_records.rec_ent_user%TYPE,
-        p_summary OUT SYS_REFCURSOR, p_changes OUT SYS_REFCURSOR
+        p_summary OUT SYS_REFCURSOR, p_changes OUT SYS_REFCURSOR,
+        p_empty_selection_behavior IN VARCHAR2 DEFAULT 'INHERIT'
     ) IS
     BEGIN
         run_change(p_payor_guid, p_plan_guid, p_cbsa, p_fips,
             p_care_location_value_code, p_patient_entered_value_code,
             p_covered_days_value_code, p_audit_user, 'PREVIEW', NULL,
-            p_summary, p_changes);
+            p_summary, p_changes, p_empty_selection_behavior);
     END preview_configuration;
 
     PROCEDURE apply_configuration (
@@ -320,13 +350,14 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes_api AS
         p_covered_days_value_code IN VARCHAR2,
         p_audit_user IN hcfa_electronic_records.rec_ent_user%TYPE,
         p_expected_state_hash IN VARCHAR2,
-        p_summary OUT SYS_REFCURSOR, p_changes OUT SYS_REFCURSOR
+        p_summary OUT SYS_REFCURSOR, p_changes OUT SYS_REFCURSOR,
+        p_empty_selection_behavior IN VARCHAR2 DEFAULT 'INHERIT'
     ) IS
     BEGIN
         run_change(p_payor_guid, p_plan_guid, p_cbsa, p_fips,
             p_care_location_value_code, p_patient_entered_value_code,
             p_covered_days_value_code, p_audit_user, 'APPLY',
-            p_expected_state_hash, p_summary, p_changes);
+            p_expected_state_hash, p_summary, p_changes, p_empty_selection_behavior);
     END apply_configuration;
 END pfc_value_codes_api;
 /

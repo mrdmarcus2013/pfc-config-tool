@@ -190,6 +190,7 @@ export function App() {
     <div className="app-shell">
       <header className="product-bar"><span className="product-mark">PFC</span><span>Configuration Tool</span></header>
       {copySource && <PayorCopyPanel source={copySource.context} sourceLabel={copySource.label}
+        supportDeveloperMode={SUPPORT_DEVELOPER_MODE}
         returnFocusElement={copyLauncher.current}
         onClose={() => setCopySource(null)}
         onApplied={destination => { clearCurrentConfigurations(); void selectPayorContext(payorContextKey({ payor_guid: destination, plan_guid: null })); }} />}
@@ -204,13 +205,16 @@ export function App() {
           {(payorCatalogError || payorSwitchError) && <p role="alert">{payorCatalogError ?? payorSwitchError}</p>}
           <button ref={copyLauncher} className="secondary-button copy-launch" disabled={contextSwitching || contextLoading || payorCatalogLoading || !configurationContext || !lob || copySource !== null}
             onClick={() => { setSelectedField(null); setCopySource({ context: { ...activeContext },
-              label: activePayorContext.payor_name + " ? " + (activePayorContext.plan_name ?? (activeContext.plan_guid ? "Selected plan" : "Payor-level settings")) }); }}>
+              label: activePayorContext.payor_name + " ? " + (activeContext.plan_guid ? activePayorContext.plan_name ?? "Selected plan" : "All Plans") }); }}>
             COPY PAYOR SETTINGS
           </button>
           <p className="context-inheritance">{activeContext.plan_guid
-            ? "Editing this plan. Default inherits payor settings."
-            : "Editing payor settings. Changes also affect plans that inherit these settings."}</p>
+            ? "Editing only the selected plan."
+            : "Editing payor settings. Changes also apply to plans without their own setting."}</p>
           {SUPPORT_DEVELOPER_MODE && <details className="technical-details context-technical"><summary>Technical details</summary>
+            <p>{activeContext.plan_guid
+              ? "Default inherits payor settings."
+              : "Plans inherit payor settings unless an applicable plan override takes precedence."}</p>
             {contextError && <p role="alert">Template context unavailable. {contextError}</p>}
             <dl>{technicalContextRows(activeContext, configurationContext, contextLoading)
               .map((row) => <div key={row.label}><dt>{row.label}</dt><dd><code>{row.value}</code></dd></div>)}</dl>

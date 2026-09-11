@@ -235,14 +235,16 @@ BEGIN
             :payor_guid, :plan_guid, :cbsa, :fips,
             :care_location_value_code, :patient_entered_value_code,
             :covered_days_value_code, :audit_user,
-            :summary_cursor, :changes_cursor
+            :summary_cursor, :changes_cursor,
+            p_empty_selection_behavior => :empty_selection_behavior
         );
     ELSE
         pfc_value_codes_api.apply_configuration(
             :payor_guid, :plan_guid, :cbsa, :fips,
             :care_location_value_code, :patient_entered_value_code,
             :covered_days_value_code, :audit_user, :expected_state_hash,
-            :summary_cursor, :changes_cursor
+            :summary_cursor, :changes_cursor,
+            p_empty_selection_behavior => :empty_selection_behavior
         );
     END IF;
 END;
@@ -639,7 +641,8 @@ class ConfigurationService:
 
     def _run_value_codes(self, *, payor_guid: str, plan_guid: str | None,
                          selections: dict[str, bool], audit_user: str,
-                         mode: str, expected_state_hash: str | None) -> dict[str, Any]:
+                         mode: str, expected_state_hash: str | None,
+                         empty_selection_behavior: str = "INHERIT") -> dict[str, Any]:
         with _oracle_operation(
             self._connection_factory,
             operation=mode.lower() + " Value Codes",
@@ -657,7 +660,7 @@ class ConfigurationService:
             cursor.execute(_VALUE_CODES_CHANGE_BLOCK, payor_guid=payor_guid,
                 plan_guid=plan_guid, audit_user=audit_user, operation_mode=mode,
                 expected_state_hash=expected_state_hash, summary_cursor=summary_out,
-                changes_cursor=changes_out, **flags)
+                changes_cursor=changes_out, empty_selection_behavior=empty_selection_behavior, **flags)
             summary_cursor = session.track(summary_out.getvalue(), "Value Codes summary cursor")
             changes_cursor = session.track(changes_out.getvalue(), "Value Codes changes cursor")
             summaries = _rows_as_dicts(summary_cursor); changes = _rows_as_dicts(changes_cursor)
@@ -669,7 +672,8 @@ class ConfigurationService:
                 raise ApiError(500, "application_failure", "The database returned an invalid Value Codes status.")
             change_count = int(row["change_count"])
             response = {
-                "status": status, "is_default": not any(selections.values()),
+                "status": status,
+                "is_default": not any(selections.values()) and empty_selection_behavior == "INHERIT",
                 "selections": selections, "display_summary": str(row["display_label"]),
                 "state_hash": str(row["state_hash"]), "change_count": change_count,
                 "summary": _safe_summary(status, change_count), "pfc_guid": row.get("pfc_guid"),

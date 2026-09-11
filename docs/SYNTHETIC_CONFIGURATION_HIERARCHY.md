@@ -57,14 +57,15 @@ in Tier 2 Technical details. Multiple component owners are displayed separately.
 Owner identifiers come from the effective HER, not the PFC's template fields.
 
 Inherited Value Codes show their actual capabilities in Current configuration.
-The proposal has an explicit Use inherited settings choice. Its read-only
-checkboxes show the actual inherited capabilities, including CBSA and FIPS from
-a user template or the same-payor parent of a plan. Customize starts with the
-current effective capabilities. An empty custom choice requires either selecting
-a capability or choosing inheritance; it must not imply an Off override.
-The underlying all-false API request still means Default/inherit, not Off.
-Current responses expose separate effective and inherited selections, preserving
-unknown inherited capabilities as null rather than unchecked/disabled claims.
+The proposal uses editable checkboxes showing effective capabilities, including
+CBSA and FIPS supplied by a user template or the same-payor parent of a plan.
+Users choose desired on/off values without an inheritance/customization step.
+The UI sends `empty_selection_behavior: "OFF"`, so clearing both Home Health
+boxes removes automatic CBSA/FIPS additions while retaining ordinary values;
+clearing every Hospice box turns that record off. Legacy callers omitting this
+parameter retain the existing all-false Default behavior. Current responses
+still expose effective and inherited selections separately. Unknown effective
+values remain indeterminate until the user resolves the desired choices.
 Manual settings continue through Preview/Apply and the minimal-override engine.
 Template switching is not a new UI feature in this change; its future workflow
 must validate template/LOB compatibility, refresh current settings and reconcile

@@ -7,6 +7,8 @@ CREATE OR REPLACE PACKAGE pfc_value_codes AUTHID DEFINER AS
     c_hospice     CONSTANT t_line_of_business := 'HOSPICE';
 
     c_recipe_default CONSTANT t_recipe_id := 'DEFAULT';
+    c_recipe_home_health_neutral CONSTANT t_recipe_id := 'HOME_HEALTH_NO_CBSA_FIPS';
+    c_recipe_hospice_off CONSTANT t_recipe_id := 'HOSPICE_OFF';
     c_recipe_home_health_cbsa CONSTANT t_recipe_id := 'HOME_HEALTH_CBSA';
     c_recipe_home_health_cbsa_fips CONSTANT t_recipe_id :=
         'HOME_HEALTH_CBSA_FIPS';
@@ -51,7 +53,8 @@ CREATE OR REPLACE PACKAGE pfc_value_codes AUTHID DEFINER AS
 
     FUNCTION private_option_code (
         p_line_of_business IN t_line_of_business,
-        p_selections       IN t_selections
+        p_selections       IN t_selections,
+        p_empty_selection_behavior IN VARCHAR2 DEFAULT 'INHERIT'
     ) RETURN pfc_option_types.t_option_code;
 
     FUNCTION is_private_option_code (
@@ -64,13 +67,15 @@ CREATE OR REPLACE PACKAGE pfc_value_codes AUTHID DEFINER AS
 
     FUNCTION get_recipe (
         p_line_of_business IN t_line_of_business,
-        p_selections       IN t_selections
+        p_selections       IN t_selections,
+        p_empty_selection_behavior IN VARCHAR2 DEFAULT 'INHERIT'
     ) RETURN pfc_option_types.t_option_definition;
 
     FUNCTION build_desired_state (
         p_line_of_business IN t_line_of_business,
         p_selections       IN t_selections,
-        p_source_state     IN t_configuration_state
+        p_source_state     IN t_configuration_state,
+        p_empty_selection_behavior IN VARCHAR2 DEFAULT 'INHERIT'
     ) RETURN t_configuration_state;
 
     FUNCTION recognize_state (

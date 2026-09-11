@@ -15,7 +15,8 @@ CREATE OR REPLACE PACKAGE pfc_value_codes_api AUTHID DEFINER AS
         p_covered_days_value_code    IN VARCHAR2,
         p_audit_user                 IN hcfa_electronic_records.rec_ent_user%TYPE,
         p_summary                    OUT SYS_REFCURSOR,
-        p_changes                    OUT SYS_REFCURSOR
+        p_changes                    OUT SYS_REFCURSOR,
+        p_empty_selection_behavior IN VARCHAR2 DEFAULT 'INHERIT'
     );
 
     PROCEDURE apply_configuration (
@@ -29,7 +30,8 @@ CREATE OR REPLACE PACKAGE pfc_value_codes_api AUTHID DEFINER AS
         p_audit_user                 IN hcfa_electronic_records.rec_ent_user%TYPE,
         p_expected_state_hash        IN VARCHAR2,
         p_summary                    OUT SYS_REFCURSOR,
-        p_changes                    OUT SYS_REFCURSOR
+        p_changes                    OUT SYS_REFCURSOR,
+        p_empty_selection_behavior IN VARCHAR2 DEFAULT 'INHERIT'
     );
 END pfc_value_codes_api;
 /

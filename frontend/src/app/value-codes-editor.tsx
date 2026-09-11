@@ -14,9 +14,9 @@ import { EditorFooter } from "./editor-footer.js";
 import { ClaimFieldPanelHeader } from "./claim-field-panel-header.js";
 import { ValueCodesProposal } from "./value-codes-proposal.js";
 import {
-  emptyValueCodeSelections, valueCodeSelectionIdentity, valueCodesIntentFromCurrent,
-  valueCodesIntentIsValid, valueCodesIntentMatchesCurrent, valueCodesIntentSummary,
-  valueCodesRequestSelections, type ValueCodesIntent,
+  emptyValueCodeSelections, valueCodeSelectionIdentity, valueCodesDraftFromCurrent,
+  valueCodesDraftIsComplete, valueCodesDraftMatchesCurrent, valueCodesDraftSummary,
+  valueCodesCurrentSummary, valueCodesRequestSelections, type ValueCodesDraft,
 } from "./value-codes.js";
 
 interface ValueCodesEditorProps {
@@ -29,7 +29,7 @@ interface ValueCodesEditorProps {
 
 export function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supportDeveloperMode }: ValueCodesEditorProps) {
   const [current, setCurrent] = useState<ValueCodesCurrentResponse | null>(null);
-  const [intent, setIntent] = useState<ValueCodesIntent>(() => ({ useInherited: true, selections: emptyValueCodeSelections() }));
+  const [draft, setDraft] = useState<ValueCodesDraft>(emptyValueCodeSelections);
   const [previewRecord, setPreviewRecord] = useState<PreviewRecord<ValueCodesChangeResponse> | null>(null);
   const [busy, setBusy] = useState<"preview" | "apply" | null>(null);
   const [error, setError] = useState<{ category: string; message: string } | null>(null);
@@ -38,15 +38,14 @@ export function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supp
   const [success, setSuccess] = useState(false);
   const gate = useRef(new SingleFlightGate());
   const request = { payor_guid: context.payor_guid, plan_guid: context.plan_guid };
-  const selections = valueCodesRequestSelections(intent);
-  const valid = valueCodesIntentIsValid(intent);
-  const identity = valueCodeSelectionIdentity(context, lineOfBusiness, selections) + "|" + intent.useInherited;
+  const valid = valueCodesDraftIsComplete(draft);
+  const identity = valueCodeSelectionIdentity(context, lineOfBusiness, draft) + "|OFF";
   const preview = currentPreview(previewRecord, identity);
-  const dirty = current !== null && !valueCodesIntentMatchesCurrent(current, intent);
+  const dirty = current !== null && !valueCodesDraftMatchesCurrent(current, draft);
   const actionState = editorActionState({ dirty, preview, busy, applyCompleted: success });
 
   const initialize = (response: ValueCodesCurrentResponse) => {
-    setCurrent(response); setIntent(valueCodesIntentFromCurrent(response)); setPreviewRecord(null);
+    setCurrent(response); setDraft(valueCodesDraftFromCurrent(response)); setPreviewRecord(null);
     setConfirmationOpen(false);
   };
   const loadCurrent = async (force = false, initializeIntent = true) => {
@@ -62,24 +61,25 @@ export function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supp
   };
   useEffect(() => { void loadCurrent(); }, [context.payor_guid, context.plan_guid, lineOfBusiness]);
 
-  const update = (next: ValueCodesIntent) => {
-    setIntent(next); setPreviewRecord(null); setError(null); setSuccess(false); setConfirmationOpen(false);
+  const update = (next: ValueCodesDraft) => {
+    setDraft(next); setPreviewRecord(null); setError(null); setSuccess(false); setConfirmationOpen(false);
   };
   const runPreview = () => runEditorPreview({
     canPreview: dirty && valid, gate: gate.current, identity,
-    request: () => apiClient.valueCodesPreview({ ...request, selections, audit_user: context.audit_user }),
+    request: () => apiClient.valueCodesPreview({ ...request, selections: valueCodesRequestSelections(draft),
+      empty_selection_behavior: "OFF", audit_user: context.audit_user }),
     setBusy, setError, setSuccess, setPreviewRecord,
   });
   const runApply = async () => {
     if (!dirty || !valid || !previewAllowsApply(preview) || !gate.current.tryEnter()) return;
-    const requested = intent;
+    const requested = valueCodesRequestSelections(draft);
     setBusy("apply"); setConfirmationOpen(false); setError(null);
     try {
-      await apiClient.valueCodesApply({ ...request, selections,
+      await apiClient.valueCodesApply({ ...request, selections: requested, empty_selection_behavior: "OFF",
         audit_user: context.audit_user, expected_state_hash: preview!.state_hash });
       setPreviewRecord(null); setSuccess(false);
       const refreshed = await loadCurrent(true);
-      if (refreshed && valueCodesIntentMatchesCurrent(refreshed, requested)) setSuccess(true);
+      if (refreshed && valueCodesDraftMatchesCurrent(refreshed, requested)) setSuccess(true);
       else if (refreshed) setError({ category: "confirmation_failed", message: "The applied Value Codes configuration could not be confirmed." });
     } catch (caught) {
       const safe = safeError(caught); setError(safe);
@@ -89,7 +89,7 @@ export function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supp
       }
     } finally { setBusy(null); gate.current.exit(); }
   };
-  const summary = current ? valueCodesIntentSummary(current, intent) : "";
+  const summary = valueCodesDraftSummary(lineOfBusiness, draft);
   return <div className="drawer-backdrop" role="presentation">
     <ModalSurface as="aside" className="field-editor" role="dialog" aria-modal="true" aria-labelledby="editor-title" onDismiss={onClose}>
       <ClaimFieldPanelHeader title="Value Codes" onClose={onClose} />
@@ -97,15 +97,15 @@ export function ValueCodesEditor({ field, context, lineOfBusiness, onClose, supp
         {loading && <p className="current-loading" role="status">Loading current configuration…</p>}
         {current && <><div className="configuration-stage current-configuration">
           <h4 className="configuration-stage-title">Current configuration</h4>
-          <p><strong>{current.display_summary}</strong></p>
-          {current.is_default && <p className="helper">Uses the settings inherited for this {context.plan_guid ? "plan" : "payor"}.</p>}
+          <p><strong>{valueCodesCurrentSummary(current)}</strong></p>
           {supportDeveloperMode && <details className="technical-details"><summary>Technical details</summary><dl>
             <div><dt>Canonical status</dt><dd>{configurationSourceStatus(current.configuration_owners)}</dd></div>
+            <div><dt>Resolved configuration</dt><dd>{current.display_summary}</dd></div>
             <div><dt>PFC GUID</dt><dd><code>{current.pfc_guid}</code></dd></div>
                         <ConfigurationOwnerDetails owners={current.configuration_owners} />
             {Object.entries(current.debug).map(([key, value]) => <div key={key}><dt>{key}</dt><dd><code>{String(value ?? "")}</code></dd></div>)}
           </dl></details>}
-        </div><ValueCodesProposal current={current} intent={intent} isPlan={context.plan_guid !== null} onChange={update} /></>}
+        </div><ValueCodesProposal current={current} draft={draft} disabled={busy !== null || loading} onChange={update} /></>}
         {error && <div className={`notice error ${error.category === "stale_preview" ? "stale" : ""}`} role="alert"><strong>Unable to complete request</strong><p>{error.message}</p></div>}
         {success && <div className="notice success" role="status"><strong>Configuration applied</strong><p>The requested Value Codes configuration was applied and refreshed.</p></div>}
         {preview && <div className="configuration-stage preview-stage"><h4 className="configuration-stage-title">Preview</h4><p>{preview.summary}</p>

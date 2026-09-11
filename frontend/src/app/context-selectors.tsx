@@ -19,9 +19,9 @@ export function ContextSelectors({ contexts, active, disabled, billingForm, onSe
     <div><dt><label htmlFor="context-plan">Plan</label></dt><dd>
       <select id="context-plan" value={payorContextKey(active)} disabled={disabled}
         onChange={e => onSelect(e.target.value)}>
-        {!plans.some(c => c.plan_guid === null) && <option value={payorContextKey({ ...active, plan_guid: null })}>Payor-level settings</option>}
+        {!plans.some(c => c.plan_guid === null) && <option value={payorContextKey({ ...active, plan_guid: null })}>All Plans</option>}
         {plans.map((c, index) => <option key={payorContextKey(c)} value={payorContextKey(c)}>
-          {c.plan_guid ? c.plan_name ?? `Plan ${index + 1}` : "Payor-level settings"}
+          {c.plan_guid ? c.plan_name ?? `Plan ${index + 1}` : "All Plans"}
         </option>)}
       </select>
     </dd></div>

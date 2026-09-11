@@ -237,6 +237,7 @@ class ValueCodesCurrentRequest(BaseModel):
 class ValueCodesChangeRequest(ValueCodesCurrentRequest):
     selections: ValueCodeSelections
     audit_user: GuidText
+    empty_selection_behavior: Literal["INHERIT", "OFF"] = "INHERIT"
 
 
 class ValueCodesApplyRequest(ValueCodesChangeRequest):

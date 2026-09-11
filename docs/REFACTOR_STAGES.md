@@ -431,6 +431,90 @@ runtime code and saved demo settings are unchanged. Oracle reports no compilatio
 errors, both installed Value Codes bodies match the working files, and the full
 persisted configuration fingerprint matches the pre-change state.
 
+## Correctness fix: direct Value Codes on/off controls
+
+Implemented on `fix/value-codes-direct-controls` on September 11, after
+`a5f4723`. It supersedes the September 7 Value
+Codes inheritance/customization radio section in response to user feedback.
+
+The editor now opens with editable effective checkbox values. Normal Current
+summaries show on/off state; inheritance ownership stays in Technical Details.
+Unknown effective values are indeterminate, and Preview requires a complete
+supported selection. Merely opening a known configuration stays unchanged.
+Stale-preview recovery preserves the desired checkbox values while refreshing
+Current, and post-Apply verification compares effective capabilities.
+
+The UI sends the optional `empty_selection_behavior: "OFF"` parameter. Empty
+Home Health selections replace the four managed CBSA/FIPS substitutions with
+the known generic patient-entered value functions while preserving the source
+record gate and unmanaged fields. Empty Hospice selections set the Value Codes
+record Off while retaining complete field definitions. Legacy callers omitting
+the parameter keep the old empty Default behavior, and nonempty selections keep
+their existing private option codes. New empty OFF codes produce distinct
+Preview hashes. The generic mutation engine and production harnesses are unchanged.
+
+Local installation previews changes and requires confirmation; it replaces the
+two Value Codes specifications/bodies and recompiles dependent routines without
+changing saved configuration or recreating tables:
+
+```powershell
+.venv/Scripts/python.exe database/run_poc.py install_value_codes_controls
+.venv/Scripts/python.exe database/run_poc.py install_value_codes_controls --confirm-value-codes-controls
+$env:RUN_ORACLE_VALUE_CODES_CONTROLS='1'
+.venv/Scripts/python.exe -m pytest database/tests/test_value_codes_controls.py -q
+```
+
+Verification passed all 140 frontend tests, the build/typecheck, and 606 Python
+tests (39 environment-gated tests skipped). The new coverage includes 35 backend
+request/transaction cases and 44 rollback-only Oracle cases for explicit Off,
+legacy inheritance, full field preservation, plan isolation, stale hashes,
+minimal overrides and unknown inherited states. A Home Health Off request that
+would collapse into an unrecognized inherited state is blocked before mutation.
+
+All 706 read/preview and 35 rollback-only Apply cases exactly match a fresh
+September 11 baseline, with no exclusions. All 14 captured live API/schema
+responses match except the two intentional optional request-schema properties.
+Read-only requests through Vite confirm that inherited CBSA/FIPS can preview
+explicit Off, with a distinct hash from legacy Default and no change to Current.
+The served editor contains the direct controls and no inheritance/customization
+radio section. These checks do not claim mounted browser interaction.
+
+Oracle reports no compilation errors or invalid PFC objects. All four installed
+Value Codes specifications/bodies match the working files, and the full persisted
+configuration fingerprint matches the fresh pre-change state. The backend is
+restarted with the updated request handling; saved demo settings were not reseeded.
+
+## Presentation fix: Tier 2 technical details boundary
+
+The September 11 follow-up keeps normal screens focused on effective settings
+and the effects of a change. Template assignments, inheritance sources, and
+ownership diagnostics appear only inside collapsed Technical Details enabled
+for Tier 2. The same restriction applies outside those sections in Tier 2 mode.
+The project rules and frontend guide now record this presentation standard.
+
+The Copy workflow retains affected payor/plan names, replacement and removal
+information, and explicit acceptance of the all-plan reset. Template comparisons
+and vetted technical error diagnoses move into gated details. Normal errors
+remain actionable without asking users to correct templates. Unknown backend
+error text is not displayed in either mode.
+
+The header describes editing scope, Remarks uses the existing Standard remarks
+choice consistently, and the Value Codes overview uses effective capability
+metadata just like its editor. Unknown values stay unavailable. End-user Q&A
+describes behavior; implementation explanations stay in developer notes. These
+changes do not alter configuration requests, database rules, or saved settings.
+The Plan dropdown labels the shared payor selection **All Plans**, with the same
+editing scope as before; applicable plan-specific settings retain precedence.
+
+Verification passed all 148 frontend tests and the build/typecheck. Copy tests
+compare normal output with Tier 2 output after removing only its technical
+sections, cover Preview/No Change/Applied and template-only updates, and check
+that vetted error diagnoses stay collapsed and gated. Overview tests use
+contradictory diagnostic labels and unknown metadata to verify that ordinary
+summaries use only effective values. The local Vite server serves the updated
+modules successfully. No database installation or configuration writes were
+needed for this presentation follow-up.
+
 ## Deferred work
 
 Broader automated browser and screen-reader coverage can be considered if the

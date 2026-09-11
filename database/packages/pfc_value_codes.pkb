@@ -67,13 +67,19 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
 
     FUNCTION recipe_id_for (
         p_line_of_business t_line_of_business,
-        p_selections       t_selections
+        p_selections       t_selections,
+        p_empty_selection_behavior VARCHAR2 DEFAULT 'INHERIT'
     ) RETURN t_recipe_id
     IS
         l_lob t_line_of_business := normalize_lob(p_line_of_business);
         l_selections t_selections := normalized_selections(p_selections);
         l_key VARCHAR2(5);
+        l_empty_behavior VARCHAR2(32767) := UPPER(TRIM(p_empty_selection_behavior));
     BEGIN
+        IF l_empty_behavior IS NULL OR l_empty_behavior NOT IN ('INHERIT', 'OFF') THEN
+            RAISE_APPLICATION_ERROR(c_err_invalid_selection,
+                'Empty Value Codes selection behavior must be INHERIT or OFF.');
+        END IF;
         IF l_lob = c_home_health THEN
             IF l_selections.care_location_value_code = 'Y'
                OR l_selections.patient_entered_value_code = 'Y'
@@ -86,7 +92,8 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
                     'Add FIPS requires Add CBSA.');
             END IF;
             IF l_selections.cbsa = 'N' THEN
-                RETURN c_recipe_default;
+                RETURN CASE WHEN l_empty_behavior = 'OFF'
+                    THEN c_recipe_home_health_neutral ELSE c_recipe_default END;
             ELSIF l_selections.fips = 'N' THEN
                 RETURN c_recipe_home_health_cbsa;
             END IF;
@@ -101,7 +108,8 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
             l_selections.patient_entered_value_code ||
             l_selections.covered_days_value_code;
         CASE l_key
-            WHEN 'NNN' THEN RETURN c_recipe_default;
+            WHEN 'NNN' THEN RETURN CASE WHEN l_empty_behavior = 'OFF'
+                THEN c_recipe_hospice_off ELSE c_recipe_default END;
             WHEN 'YNN' THEN RETURN c_recipe_hospice_61_g8;
             WHEN 'YNY' THEN RETURN c_recipe_hospice_61_g8_vc80;
             WHEN 'NYN' THEN RETURN c_recipe_hospice_patient;
@@ -167,6 +175,8 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
         l_option.option_code := NVL(p_option_code, p_recipe_id);
         l_option.display_label := CASE p_recipe_id
             WHEN c_recipe_default THEN 'Default'
+            WHEN c_recipe_home_health_neutral THEN 'CBSA and FIPS off'
+            WHEN c_recipe_hospice_off THEN 'Value Codes off'
             WHEN c_recipe_home_health_cbsa THEN 'CBSA'
             WHEN c_recipe_home_health_cbsa_fips THEN 'CBSA and FIPS'
             WHEN c_recipe_hospice_61_g8 THEN 'Care-location value code 61/G8'
@@ -184,17 +194,24 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
         l_option.targets(1).target_code := c_target_code;
         l_option.targets(1).billing_form_code := c_billing_form_code;
         l_option.targets(1).record_type_code := c_record_type_code;
-        IF p_recipe_id <> c_recipe_default THEN
+        -- HH neutral removes only CBSA/FIPS substitutions; retain the source HER gate.
+        IF p_recipe_id NOT IN (c_recipe_default, c_recipe_home_health_neutral) THEN
             l_option.targets(1).her_requirements(1).attribute_code :=
                 pfc_option_types.c_attr_sto_proc_name;
             l_option.targets(1).her_requirements(1).desired_value.action_code :=
                 pfc_option_types.c_action_set;
             l_option.targets(1).her_requirements(1).desired_value.value_text :=
-                'RETURN_1';
+                CASE WHEN p_recipe_id = c_recipe_hospice_off THEN 'RETURN_0' ELSE 'RETURN_1' END;
         END IF;
 
         CASE p_recipe_id
             WHEN c_recipe_default THEN NULL;
+            WHEN c_recipe_home_health_neutral THEN
+                add_hef_requirement(l_option, 1, '012', 'GET_VAL_CODE', NULL);
+                add_hef_requirement(l_option, 2, '015', 'GET_VAL_CODE_AMT', NULL);
+                add_hef_requirement(l_option, 3, '022', 'GET_VAL_CODE', NULL);
+                add_hef_requirement(l_option, 4, '025', 'GET_VAL_CODE_AMT', NULL);
+            WHEN c_recipe_hospice_off THEN NULL;
             WHEN c_recipe_home_health_cbsa THEN
                 add_hef_requirement(l_option, 1, '012', NULL, '61');
                 add_hef_requirement(l_option, 2, '015', 'GET_PAT_CBSA_CODE', NULL);
@@ -250,7 +267,8 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
 
     FUNCTION private_option_code (
         p_line_of_business IN t_line_of_business,
-        p_selections       IN t_selections
+        p_selections       IN t_selections,
+        p_empty_selection_behavior IN VARCHAR2 DEFAULT 'INHERIT'
     ) RETURN pfc_option_types.t_option_code
     IS
         l_lob t_line_of_business := normalize_lob(p_line_of_business);
@@ -258,12 +276,14 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
         l_recipe_id t_recipe_id;
     BEGIN
         /* Validation is deliberately shared with recipe selection. */
-        l_recipe_id := recipe_id_for(l_lob, l_selections);
+        l_recipe_id := recipe_id_for(l_lob, l_selections, p_empty_selection_behavior);
         RETURN 'VC|' || l_lob || '|' || l_selections.cbsa || '|' ||
             l_selections.fips || '|' ||
             l_selections.care_location_value_code || '|' ||
             l_selections.patient_entered_value_code || '|' ||
-            l_selections.covered_days_value_code;
+            l_selections.covered_days_value_code ||
+            CASE WHEN l_recipe_id IN (c_recipe_home_health_neutral, c_recipe_hospice_off)
+                THEN '|OFF' END;
     END;
 
     FUNCTION is_private_option_code (
@@ -300,6 +320,13 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
                 'The private Value Codes selection is invalid.');
         END IF;
 
+        l_selections := no_selections;
+        IF private_option_code(c_home_health, l_selections, 'OFF') = l_code THEN
+            RETURN recipe_definition(c_recipe_home_health_neutral, l_code);
+        ELSIF private_option_code(c_hospice, l_selections, 'OFF') = l_code THEN
+            RETURN recipe_definition(c_recipe_hospice_off, l_code);
+        END IF;
+
         FOR l_mask IN 0 .. 31 LOOP
             l_selections.cbsa := CASE WHEN BITAND(l_mask, 1) <> 0 THEN 'Y' ELSE 'N' END;
             l_selections.fips := CASE WHEN BITAND(l_mask, 2) <> 0 THEN 'Y' ELSE 'N' END;
@@ -319,21 +346,23 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
 
     FUNCTION get_recipe (
         p_line_of_business IN t_line_of_business,
-        p_selections       IN t_selections
+        p_selections       IN t_selections,
+        p_empty_selection_behavior IN VARCHAR2 DEFAULT 'INHERIT'
     ) RETURN pfc_option_types.t_option_definition
     IS
     BEGIN
-        RETURN recipe_definition(recipe_id_for(p_line_of_business, p_selections));
+        RETURN recipe_definition(recipe_id_for(p_line_of_business, p_selections, p_empty_selection_behavior));
     END;
 
     FUNCTION build_desired_state (
         p_line_of_business IN t_line_of_business,
         p_selections       IN t_selections,
-        p_source_state     IN t_configuration_state
+        p_source_state     IN t_configuration_state,
+        p_empty_selection_behavior IN VARCHAR2 DEFAULT 'INHERIT'
     ) RETURN t_configuration_state
     IS
         l_option pfc_option_types.t_option_definition :=
-            get_recipe(p_line_of_business, p_selections);
+            get_recipe(p_line_of_business, p_selections, p_empty_selection_behavior);
         l_desired t_configuration_state := p_source_state;
         l_requirement_index PLS_INTEGER;
         l_attribute_index PLS_INTEGER;
@@ -425,7 +454,13 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
         IF p_recipe_id = c_recipe_default THEN
             RETURN FALSE;
         END IF;
-        IF NOT values_equal(p_state.her_sto_proc_name,
+        IF p_recipe_id = c_recipe_home_health_neutral THEN
+            -- Unknown inherited gating is not enough evidence to classify its capabilities.
+            IF p_state.her_sto_proc_name IS NULL
+               OR p_state.her_sto_proc_name NOT IN ('RETURN_1', 'RETURN_0') THEN
+                RETURN FALSE;
+            END IF;
+        ELSIF NOT values_equal(p_state.her_sto_proc_name,
             l_option.targets(1).her_requirements(1).desired_value.value_text) THEN
             RETURN FALSE;
         END IF;
@@ -448,6 +483,9 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
                                         l_expected_sto)
                        OR NOT values_equal(p_state.hefs(l_hef_index).hard_coded_data,
                                            l_expected_hard)
+                       OR (p_recipe_id = c_recipe_home_health_neutral
+                           AND NOT values_equal(p_state.hefs(l_hef_index).field_name,
+                               'HI' || p_state.hefs(l_hef_index).field_number))
                        OR (p_state.hefs(l_hef_index).sto_proc_name IS NOT NULL
                            AND p_state.hefs(l_hef_index).hard_coded_data IS NOT NULL) THEN
                         RETURN FALSE;
@@ -475,12 +513,14 @@ CREATE OR REPLACE PACKAGE BODY pfc_value_codes AS
         IF l_lob = c_home_health THEN
             l_ids(1) := c_recipe_home_health_cbsa;
             l_ids(2) := c_recipe_home_health_cbsa_fips;
+            l_ids(3) := c_recipe_home_health_neutral;
         ELSE
             l_ids(1) := c_recipe_hospice_61_g8;
             l_ids(2) := c_recipe_hospice_61_g8_vc80;
             l_ids(3) := c_recipe_hospice_patient;
             l_ids(4) := c_recipe_hospice_patient_vc80;
             l_ids(5) := c_recipe_hospice_vc80;
+            l_ids(6) := c_recipe_hospice_off;
         END IF;
         FOR i IN 1 .. l_ids.COUNT LOOP
             IF recipe_matches(l_ids(i), p_effective_state) THEN

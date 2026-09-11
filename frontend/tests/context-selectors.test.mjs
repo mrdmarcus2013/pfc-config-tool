@@ -14,7 +14,7 @@ test("header orders payor, owned plans and billing form and hides foreign plans"
   }));
   assert.ok(markup.indexOf('context-payor') < markup.indexOf('context-plan'));
   assert.ok(markup.indexOf('context-plan') < markup.indexOf('Billing Form'));
-  assert.match(markup, /Payor-level settings/);
+  assert.match(markup, /All Plans/);
   assert.match(markup, /Owned plan/);
   assert.match(markup, /Second payor/);
   assert.doesNotMatch(markup, /Foreign plan|foreign/);

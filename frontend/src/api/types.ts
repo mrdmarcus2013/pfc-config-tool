@@ -133,6 +133,7 @@ export interface ValueCodeSelections {
 export interface ValueCodesCurrentRequest { payor_guid: string; plan_guid: string | null }
 export interface ValueCodesChangeRequest extends ValueCodesCurrentRequest {
   selections: ValueCodeSelections;
+  empty_selection_behavior?: "INHERIT" | "OFF";
   audit_user: string;
 }
 export interface ValueCodesApplyRequest extends ValueCodesChangeRequest { expected_state_hash: string }

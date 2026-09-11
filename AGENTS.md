@@ -25,6 +25,7 @@ tool-owned objects into MatrixCare production to make a validation script pass.
 - Do not add frameworks or dependencies without demonstrated need.
 - Keep the initial implementation simple and data-driven.
 - User-facing configuration must use plain-language labels; database procedure names and implementation details stay backend-only.
+- Normal screens describe effective settings and change consequences. Template names and assignments, inheritance sources, and configuration ownership belong only inside collapsed Technical Details enabled for Tier 2, including previews, confirmations, and errors. The ordinary Tier 2 view follows the same plain-language standard.
 - Ordinary field configuration must never clone another payor. The explicitly
   approved Payor Copy workflow is the exception; follow `docs/PFC_COPY_RULES.md`.
 - Do not create application functionality until explicitly requested.

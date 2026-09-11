@@ -146,7 +146,7 @@ export function RemarksEditor({
     }
   };
 
-  const currentLabel = current?.mode === "CUSTOM" ? "Custom remark" : "Default";
+  const currentLabel = current?.mode === "CUSTOM" ? "Custom remark" : "Standard remarks";
   return (
     <div className="drawer-backdrop" role="presentation">
       <ModalSurface as="aside" className="field-editor" role="dialog" aria-modal="true" aria-labelledby="editor-title" onDismiss={onClose}>
@@ -165,12 +165,12 @@ export function RemarksEditor({
                       <div><dt>Remark</dt><dd>{current.custom_remark}</dd></div>
                     </dl>
                   )}
-                  {current.mode === "DEFAULT" && (
-                    <p className="helper">Uses the remarks configuration inherited for this payor.</p>
-                  )}
                   {supportDeveloperMode && (
                     <details className="technical-details">
                       <summary>Technical details</summary>
+                      {current.mode === "DEFAULT" && (
+                        <p className="helper">Uses the inherited remarks configuration for the selected payor and plan.</p>
+                      )}
                       <dl>
                         <div><dt>Canonical status</dt><dd>{configurationSourceStatus(current.configuration_owners)}</dd></div>
                         <div><dt>PFC GUID</dt><dd><code>{current.pfc_guid}</code></dd></div>

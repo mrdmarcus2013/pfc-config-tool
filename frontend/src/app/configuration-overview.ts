@@ -5,7 +5,7 @@ import type {
 } from "../api/types";
 import type { ClaimFieldCapabilityKey } from "../types/claim-field";
 import { CurrentConfigurationCache, currentConfigurationCache } from "./current-state.js";
-import { valueCodesSummary } from "./value-codes.js";
+import { valueCodesCurrentSummary as effectiveValueCodesSummary } from "./value-codes.js";
 
 export const valueCodesCurrentCache = new CurrentConfigurationCache<ValueCodesCurrentResponse>();
 export const remarksCurrentCache = new CurrentConfigurationCache<RemarksCurrentResponse>();
@@ -47,16 +47,13 @@ export function genericCurrentSummary(current: CurrentConfigurationResponse): st
 }
 
 export function valueCodesCurrentSummary(current: ValueCodesCurrentResponse): string {
-  const summary = (current.is_default ? current.display_summary
-    : valueCodesSummary(current.line_of_business, current.selections)).replace(/\s*\(inherited\)$/i, "");
+  const summary = effectiveValueCodesSummary(current);
   const compact: Record<string, string> = {
-    "CBSA and FIPS": "CBSA + FIPS",
     "Care-location value code 61/G8": "Care location 61/G8",
     "Care-location value code 61/G8 and value code 80 with days covered": "Care location 61/G8 + VC80/days",
     "Patient-entered value code and amount": "Patient-entered value codes",
     "Patient-entered value code and amount and value code 80 with days covered": "Patient-entered + VC80/days",
     "Value code 80 with days covered": "VC80/days",
-    "Default": "Inherited settings",
   };
   return compact[summary] ?? summary;
 }

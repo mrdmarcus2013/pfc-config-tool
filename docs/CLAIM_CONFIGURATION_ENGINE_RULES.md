@@ -74,6 +74,31 @@ The error must identify the inherited source as invalid and require correction
 of the inherited payor, template or billing-form source. No repair DML is permitted on a Default
 path.
 
+## Value Codes direct controls
+
+The September 11 UI uses effective on/off checkboxes, without asking the user
+to select inheritance or customization. The engine still handles minimal
+overrides. Unknown effective values must remain unknown until the user has
+chosen a complete supported selection; they must never be displayed as Off.
+
+Value Codes requests may set `empty_selection_behavior` to `OFF`. When every
+capability is false, this is an explicit request rather than Default:
+
+- Home Health: remove the automatic CBSA/FIPS substitutions by setting managed
+  HI012/HI022 to `GET_VAL_CODE` and HI015/HI025 to `GET_VAL_CODE_AMT`, clearing
+  those managed fields' hard-coded values. Preserve the inherited HER gate and
+  every unmanaged HEF, subject to existing explicit-request safety rules. Do
+  not suppress ordinary patient-entered Value Codes or force the record On.
+- Hospice: with care-location, patient-entered and covered-days capabilities all
+  false, set the Value Codes HER to `RETURN_0` with `MANDATORY_IND = 'N'` and
+  preserve the complete source HEF set.
+
+These are explicit desired states and use the existing cloning, comparison,
+hashing and atomic Apply engine. Existing requests that omit this parameter, or
+set it to `INHERIT`, retain all-false Default semantics. Every nonempty selection
+keeps its existing behavior. Distinct empty OFF private option codes prevent
+reusing an inheritance Preview hash for an explicit OFF request.
+
 ## Current override safety
 
 An unsafe existing payor override is noncanonical. A valid explicit selection

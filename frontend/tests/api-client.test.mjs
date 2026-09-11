@@ -150,3 +150,24 @@ test("metadata failure and backend unavailability are safe", async () => {
   globalThis.fetch = async () => { throw new Error("network details"); };
   await assert.rejects(apiClient.options(), /configuration service is unavailable/i);
 });
+
+test("Value Codes preserves explicit Off and legacy inheritance semantics through Preview and Apply", async () => {
+  const calls = [];
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, body: JSON.parse(init.body) });
+    return jsonResponse({ status: "PREVIEW" });
+  };
+  const selections = { cbsa: false, fips: false, care_location_value_code: false,
+    patient_entered_value_code: false, covered_days_value_code: false };
+  const base = { payor_guid: "synthetic-payor", plan_guid: "synthetic-plan", selections, audit_user: "synthetic-audit" };
+  const explicit = { ...base, empty_selection_behavior: "OFF" };
+  await apiClient.valueCodesPreview(explicit);
+  await apiClient.valueCodesApply({ ...explicit, expected_state_hash: "F".repeat(64) });
+  await apiClient.valueCodesPreview(base);
+  await apiClient.valueCodesPreview({ ...base, empty_selection_behavior: "INHERIT" });
+  assert.deepEqual(calls[0], { path: "/api/config/value-codes/preview", body: explicit });
+  assert.deepEqual(calls[1], { path: "/api/config/value-codes/apply", body: { ...explicit, expected_state_hash: "F".repeat(64) } });
+  assert.equal("empty_selection_behavior" in calls[2].body, false, "omitted legacy behavior must remain omitted");
+  assert.equal(calls[3].body.empty_selection_behavior, "INHERIT");
+  assert.deepEqual(calls.map(call => call.body.selections), [selections, selections, selections, selections]);
+});

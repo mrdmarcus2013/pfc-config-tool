@@ -50,7 +50,7 @@ export function PayorContextSelector({
           ? "Loading available payors…"
           : switching
             ? "Resolving the selected payor…"
-            : "Plan, PFC, and template assignments are resolved together by Oracle."}
+            : "Choose the payor and plan to configure."}
       </p>
       {error && <div className="notice error" role="alert"><strong>Payor was not changed</strong><p>{error}</p></div>}
     </section>

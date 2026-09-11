@@ -107,10 +107,15 @@ never exposes its internal recipe identifiers. The request contains boolean
 capabilities: Home Health supports CBSA and CBSA with FIPS; Hospice supports
 care-location 61/G8, patient-entered value, and value code 80/days.
 Care-location and patient-entered are mutually exclusive; value code 80/days
-is independent, so Hospice has six valid states including Default. No
-selections means Default: inherit the complete source resolved by the normal
-MatrixCare hierarchy and keep no payor override. FIPS without CBSA, cross-LOB
-flags, and conflicting Hospice combinations fail safely.
+is independent. The editor shows editable effective on/off checkboxes and sends
+`empty_selection_behavior: "OFF"`. Clearing both Home Health boxes removes the
+automatic CBSA/FIPS additions while preserving ordinary patient-entered Value
+Codes and the inherited record gate. Clearing all Hospice boxes turns that
+Value Codes record off while retaining its complete field definitions.
+Legacy API requests that omit this parameter, or set it to `INHERIT`, still
+interpret all-false selections as Default: inherit the complete source and keep
+no override at the editing level. FIPS without CBSA, cross-LOB flags, and
+conflicting Hospice combinations fail safely.
 
 Remarks (UB-04 field 80) also uses a structured API. `DEFAULT` inherits the
 complete authoritative source and keeps no payor override. `CUSTOM` accepts

@@ -42,9 +42,9 @@ Service Facility and Taxonomy inherit Off, and Remarks use the standard source.
 The [hierarchy checkpoint](../docs/SYNTHETIC_CONFIGURATION_HIERARCHY.md) documents
 all payor assignments. Current-setting Technical details show each effective
 HER's configuration level owner. An inherited Value Codes summary shows its
-actual capabilities. Use inherited settings displays read-only checkboxes
-reflecting those values; Customize enables changes. The API's all-false request
-still means inheritance, independently of those displayed checkboxes.
+actual capabilities. The proposal uses editable checkboxes reflecting the
+effective on/off values, with no inheritance/customization selector. Unknown
+values appear indeterminate until the user chooses the desired settings.
 
 MatrixCare host integration is future work. A host launch is expected to supply
 `payor_guid`, nullable `plan_guid`, `pfc_guid`, and the authenticated audit-user
@@ -52,6 +52,13 @@ context. The MatrixCare Template-button entry point is not implemented in this
 standalone checkpoint.
 
 ## Support/developer diagnostics
+
+Normal screens describe effective settings, editing scope, and the consequences
+of Preview/Apply or Copy. Template names, template assignments, inheritance
+sources, and diagnostic ownership information belong only inside collapsed
+**Technical Details** enabled for Tier 2. Enabling Tier 2 does not put those
+details into the ordinary workflow text. This rule also covers summaries,
+accessible labels, confirmations, and error messages.
 
 Technical Details are hidden from the normal support experience. Developers or
 Tier 2 support can enable the collapsed diagnostic sections for a local Vite
@@ -74,10 +81,10 @@ context lookup is shown as unavailable and does not block the normal UI.
 
 The header loads the local synthetic payor catalog in both normal and Tier 2
 mode. Payor and Plan are linked dropdowns, followed by the resolved Billing Form.
-Plan options contain only the selected payor's plans. Payor-level settings edits
+Plan options contain only the selected payor's plans. All Plans edits
 the null-plan parent; a named plan edits only that plan's overrides. Oracle
 validates ownership and selects the newest eligible PFC by REC_ENT_DATE.
-Changing payor resets to Payor-level settings. Successful switches discard
+Changing payor resets to All Plans. Successful switches discard
 confirmed open-editor work, clear previews/caches and reload current settings.
 Failed resolution keeps the previous active context. Tier 2 continues to control
 only the diagnostic details, not access to these local synthetic selectors.
@@ -150,19 +157,21 @@ translated to safe user messages; raw Oracle details are not rendered.
 After that fresh read confirms the requested state, the completion footer shows
 only **Close**; dismissing it performs no API or database action.
 
-Value Codes separates the inheritance choice from its displayed capabilities.
-Use inherited settings shows the inherited CBSA, FIPS, or Hospice capabilities
-in read-only checkboxes reflecting their values. Customize starts with the effective values and
-enables editing. Choosing inheritance while editing an override displays the
-parent's capabilities, not those of the override. Unknown capabilities are
-described as unknown rather than shown as unchecked.
+Value Codes opens with editable effective checkboxes for CBSA, FIPS, or Hospice
+capabilities. There is no inheritance/customization radio section. Normal Current
+shows on/off values; configuration ownership remains in Technical Details.
+Unknown effective capabilities use indeterminate checkboxes and block Preview
+until a complete supported selection is made. FIPS still requires CBSA.
 
-The wire request remains unchanged: all false means Default. Empty custom
-selections cannot be previewed. Apply confirmation compares effective values
-for custom requests, allowing the minimal-override engine to return inheritance
-when it matches. A stale-preview failure refreshes current/inherited metadata
-while retaining the user's proposal. Deploy the Value Codes display package
-upgrade before restarting the backend that requires these response fields.
+The editor sends `empty_selection_behavior: "OFF"` for both Preview and Apply.
+All unchecked is a valid explicit choice. Home Health preserves ordinary
+patient-entered Value Codes and removes CBSA/FIPS substitutions; Hospice turns
+its Value Codes record off. Legacy callers omitting the parameter retain the
+old all-false Default behavior. Matching effective selections are unchanged,
+and the engine continues to remove source-equivalent overrides. A stale-preview
+failure refreshes current metadata while retaining the user's desired values.
+Install `014_value_codes_controls.sql` through the guarded local runner before
+restarting the backend that uses the new optional Oracle parameter.
 
 ## Keyboard and focus
 
