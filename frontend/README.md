@@ -1,5 +1,8 @@
 # PFC Configuration Tool frontend
 
+For a new computer, follow the [complete Windows setup walkthrough](../docs/FRESH_COMPUTER_SETUP.md)
+to prepare Oracle, load the demo examples, and start the normal and Tier 2 views.
+
 The header now includes **COPY PAYOR SETTINGS**, with a destination-wide preview
 and atomic acceptance. See [Payor Copy rules](../docs/PFC_COPY_RULES.md).
 

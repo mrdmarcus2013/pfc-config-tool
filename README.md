@@ -1,5 +1,9 @@
 # PFC Configuration Tool
 
+**New computer? Start with the [complete Windows setup walkthrough](docs/FRESH_COMPUTER_SETUP.md).**
+It covers prerequisites, local Oracle user/storage creation, synthetic demo data,
+both application views, verification, and later restarts.
+
 For project-manager, developer and end-user discussions, see the
 [viability demonstration Q&A](docs/VIABILITY_DEMO_QA.md).
 

@@ -1,5 +1,8 @@
 # Synthetic Oracle POC database
 
+For a first installation, use the [complete Windows setup walkthrough](../docs/FRESH_COMPUTER_SETUP.md),
+including the local Oracle tablespace/user creation that Docker does not perform.
+
 The header now includes **COPY PAYOR SETTINGS**, with a destination-wide preview
 and atomic acceptance. See [Payor Copy rules](../docs/PFC_COPY_RULES.md).
 
