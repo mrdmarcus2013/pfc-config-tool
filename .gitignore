@@ -70,6 +70,9 @@ db-data/
 /pfc-database.zip
 /service-facility-scripts.zip
 
+# Large demo recording is distributed through GitHub Releases.
+/PFC Demo Video/PFC Config Tool Video Demo.mp4
+
 # Operating system files
 .DS_Store
 Thumbs.db

@@ -4,6 +4,9 @@
 It covers prerequisites, local Oracle user/storage creation, synthetic demo data,
 both application views, verification, and later restarts.
 
+For a recorded demonstration, [download the demo video](https://github.com/mrdmarcus2013/pfc-config-tool/releases/tag/demo-video-2026-09-11).
+Open **Assets** on that page and select the MP4 (about 232 MiB).
+
 For project-manager, developer and end-user discussions, see the
 [viability demonstration Q&A](docs/VIABILITY_DEMO_QA.md).
 
