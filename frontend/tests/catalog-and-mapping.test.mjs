@@ -17,7 +17,7 @@ const serviceOptions = [
   "SERVICE_FACILITY_CONDITIONAL_ADDRESS_YES", "SERVICE_FACILITY_CONDITIONAL_ADDRESS_NO",
   "SERVICE_FACILITY_NEVER",
 ].map((option_code) => ({ option_code, display_label: option_code }));
-const providerOptions = ["PROVIDER_TAXONOMY_ON", "PROVIDER_TAXONOMY_OFF"]
+const providerOptions = ["PROVIDER_TAXONOMY_ON", "PROVIDER_TAXONOMY_OFF", "PROVIDER_TAXONOMY_CUSTOM"]
   .map((option_code) => ({ option_code, display_label: option_code }));
 const optionFields = [
   { field_number: "77", field_label: "Service Facility", options: serviceOptions },

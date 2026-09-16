@@ -34,11 +34,15 @@ OPTION_FIELDS = [
         "options": [
             {
                 "option_code": "PROVIDER_TAXONOMY_ON",
-                "display_label": "Provider Taxonomy ON",
+                "display_label": "Standard",
+            },
+            {
+                "option_code": "PROVIDER_TAXONOMY_CUSTOM",
+                "display_label": "Custom",
             },
             {
                 "option_code": "PROVIDER_TAXONOMY_OFF",
-                "display_label": "Provider Taxonomy OFF",
+                "display_label": "None",
             },
         ],
     },
@@ -110,7 +114,8 @@ BEGIN
         p_mode                => :operation_mode,
         p_expected_state_hash => :expected_state_hash,
         p_summary             => :summary_cursor,
-        p_changes             => :changes_cursor
+        p_changes             => :changes_cursor,
+        p_taxonomy_code       => :taxonomy_code
     );
 END;
 """
@@ -964,12 +969,14 @@ class ConfigurationService:
         payor_guid: str,
         plan_guid: str | None,
         option_code: str,
+        taxonomy_code: str | None = None,
         audit_user: str,
     ) -> dict[str, Any]:
         return self._run_option(
             payor_guid=payor_guid,
             plan_guid=plan_guid,
             option_code=option_code,
+            taxonomy_code=taxonomy_code,
             audit_user=audit_user,
             mode="PREVIEW",
             expected_state_hash=None,
@@ -1076,6 +1083,7 @@ class ConfigurationService:
         payor_guid: str,
         plan_guid: str | None,
         option_code: str,
+        taxonomy_code: str | None = None,
         audit_user: str,
         expected_state_hash: str,
     ) -> dict[str, Any]:
@@ -1083,6 +1091,7 @@ class ConfigurationService:
             payor_guid=payor_guid,
             plan_guid=plan_guid,
             option_code=option_code,
+            taxonomy_code=taxonomy_code,
             audit_user=audit_user,
             mode="APPLY",
             expected_state_hash=expected_state_hash,
@@ -1094,6 +1103,7 @@ class ConfigurationService:
         payor_guid: str,
         plan_guid: str | None,
         option_code: str,
+        taxonomy_code: str | None = None,
         audit_user: str,
         mode: str,
         expected_state_hash: str | None,
@@ -1114,6 +1124,7 @@ class ConfigurationService:
                 payor_guid=payor_guid,
                 plan_guid=plan_guid,
                 option_code=option_code,
+                taxonomy_code=taxonomy_code,
                 audit_user=audit_user,
                 operation_mode=mode,
                 expected_state_hash=expected_state_hash,
@@ -1143,6 +1154,7 @@ class ConfigurationService:
                 )
 
             response = self._response(summary, changes)
+            response["taxonomy_code"] = taxonomy_code.strip().upper() if taxonomy_code is not None else None
             _validate_response(response, ConfigurationResponse)
             if mode == "APPLY":
                 connection.commit()
@@ -1205,6 +1217,11 @@ class ConfigurationService:
             if enabled not in ("Y", "N"):
                 raise ApiError(500, "application_failure", "The database returned an invalid current-state result.")
             display = {"mode": None, "report_address": None, "enabled": enabled == "Y"}
+            if option_code == "PROVIDER_TAXONOMY_CUSTOM":
+                code = row.get("taxonomy_code")
+                if not isinstance(code, str) or len(code) != 10 or not code.isascii() or not code.isalnum() or code != code.upper() or enabled != "Y":
+                    raise ApiError(500, "application_failure", "The database returned an invalid taxonomy code.")
+                display["taxonomy_code"] = code
 
         return {
             "status": status,

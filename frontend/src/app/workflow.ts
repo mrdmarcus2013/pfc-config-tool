@@ -73,18 +73,21 @@ export const providerTaxonomyOption = (
 export const previewRequest = (
   context: FrontendLaunchContext,
   optionCode: PublicOptionCode,
+  taxonomyCode?: string,
 ): PreviewRequest => ({
   payor_guid: context.payor_guid,
   plan_guid: context.plan_guid,
   option_code: optionCode,
   audit_user: context.audit_user,
+  ...(optionCode === "PROVIDER_TAXONOMY_CUSTOM" ? { taxonomy_code: taxonomyCode } : {}),
 });
 
 export const previewIdentity = (
   context: FrontendLaunchContext,
   optionCode: PublicOptionCode,
+  taxonomyCode?: string,
 ): string =>
-  [context.payor_guid, context.plan_guid ?? "", context.audit_user, optionCode].join("|");
+  [context.payor_guid, context.plan_guid ?? "", context.audit_user, optionCode, ...(optionCode === "PROVIDER_TAXONOMY_CUSTOM" ? [taxonomyCode ?? ""] : [])].join("|");
 
 export const actionLabel = (operationCode: string): string => {
   const labels: Record<string, string> = {

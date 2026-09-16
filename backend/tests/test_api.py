@@ -307,8 +307,9 @@ def test_options_are_grouped_and_hide_database_details(client):
     assert body["fields"][0]["field_number"] == "81"
     assert body["fields"][0]["field_label"] == "Provider Taxonomy"
     assert [item["display_label"] for item in body["fields"][0]["options"]] == [
-        "Provider Taxonomy ON",
-        "Provider Taxonomy OFF",
+        "Standard",
+        "Custom",
+        "None",
     ]
     assert body["fields"][1]["field_number"] == "77"
     assert body["fields"][1]["field_label"] == "Service Facility"

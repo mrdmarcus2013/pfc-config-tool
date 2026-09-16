@@ -41,6 +41,7 @@ DECLARE
         l_mode VARCHAR2(20);
         l_address VARCHAR2(1);
         l_enabled VARCHAR2(1);
+        l_taxonomy_code VARCHAR2(10);
         l_pfc VARCHAR2(36);
         l_canonical VARCHAR2(1);
     BEGIN
@@ -48,7 +49,7 @@ DECLARE
             p_payor_guid, p_plan_guid, p_field_number, l_result
         );
         FETCH l_result INTO l_status, l_field, l_capability, l_option,
-            l_mode, l_address, l_enabled, l_pfc, l_canonical, l_owners;
+            l_mode, l_address, l_enabled, l_taxonomy_code, l_pfc, l_canonical, l_owners;
         IF l_result%NOTFOUND THEN
             CLOSE l_result;
             fail(p_label || ': current resolver returned no row.');

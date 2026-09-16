@@ -2,7 +2,8 @@ import type { ClaimFieldCapabilityKey } from "../types/claim-field";
 
 export type ProviderTaxonomyOptionCode =
   | "PROVIDER_TAXONOMY_ON"
-  | "PROVIDER_TAXONOMY_OFF";
+  | "PROVIDER_TAXONOMY_OFF"
+  | "PROVIDER_TAXONOMY_CUSTOM";
 
 export type ServiceFacilityOptionCode =
   | "SERVICE_FACILITY_ALWAYS_ADDRESS_YES"
@@ -17,7 +18,7 @@ export type PublicOptionCode =
 
 export type ServiceFacilityMode = "always" | "conditional" | "never";
 export type ServiceFacilityAddress = "yes" | "no";
-export type ProviderTaxonomySelection = "yes" | "no";
+export type ProviderTaxonomySelection = "yes" | "no" | "custom";
 
 export interface ConfigurationCapabilityDefinition {
   capabilityKey: ClaimFieldCapabilityKey;
@@ -43,7 +44,7 @@ export const CONFIGURATION_CAPABILITIES = {
     capabilityKey: "provider-taxonomy",
     fieldNumber: "81",
     availability: "public-options",
-    optionCodes: ["PROVIDER_TAXONOMY_ON", "PROVIDER_TAXONOMY_OFF"],
+    optionCodes: ["PROVIDER_TAXONOMY_ON", "PROVIDER_TAXONOMY_OFF", "PROVIDER_TAXONOMY_CUSTOM"],
   },
   "value-codes": {
     capabilityKey: "value-codes",
@@ -92,6 +93,7 @@ export const SERVICE_FACILITY_EDITOR_RULES = {
 } as const;
 
 export const PROVIDER_TAXONOMY_OPTION_BY_SELECTION = {
+  custom: "PROVIDER_TAXONOMY_CUSTOM",
   yes: "PROVIDER_TAXONOMY_ON",
   no: "PROVIDER_TAXONOMY_OFF",
-} as const satisfies Readonly<Record<"yes" | "no", ProviderTaxonomyOptionCode>>;
+} as const satisfies Readonly<Record<ProviderTaxonomySelection, ProviderTaxonomyOptionCode>>;

@@ -11,6 +11,7 @@ export interface OptionField { field_number: string; field_label: string; option
 export interface OptionsResponse { fields: OptionField[] }
 
 export interface PreviewRequest {
+  taxonomy_code?: string | null;
   payor_guid: string;
   plan_guid: string | null;
   option_code: PublicOptionCode;
@@ -24,6 +25,7 @@ export interface CurrentConfigurationRequest {
   field_number: "77" | "81";
 }
 export interface CurrentConfigurationDisplay {
+  taxonomy_code?: string | null;
   mode: "ALWAYS" | "CONDITIONAL" | "NEVER" | null;
   report_address: "Y" | "N" | null;
   enabled: boolean | null;
@@ -70,6 +72,7 @@ export interface TechnicalChange {
   field_number: string | null;
 }
 export interface ConfigurationResponse {
+  taxonomy_code?: string | null;
   status: "PREVIEW" | "APPLIED" | "NO_CHANGE";
   option_code: string;
   display_label: string;

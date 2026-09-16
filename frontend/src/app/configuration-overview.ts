@@ -40,7 +40,7 @@ export async function loadConfigurationOverview(context: ConfigurationContextReq
 }
 
 export function genericCurrentSummary(current: CurrentConfigurationResponse): string {
-  if (current.capability === "provider-taxonomy") return `Billing Provider Taxonomy ${current.display.enabled ? "On" : "Off"}`;
+  if (current.capability === "provider-taxonomy") return `Billing Provider Taxonomy ${current.display.taxonomy_code ? `Custom: ${current.display.taxonomy_code}` : current.display.enabled ? "Standard" : "None"}`;
   if (current.display.mode === "NEVER") return "Off";
   const mode = current.display.mode === "ALWAYS" ? "Always" : "When not HOME";
   return `${mode} · ${current.display.report_address === "Y" ? "Address included" : "No address"}`;

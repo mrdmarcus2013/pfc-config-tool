@@ -18,6 +18,7 @@ GuidText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
 PublicOptionCode = Literal[
     "PROVIDER_TAXONOMY_ON",
     "PROVIDER_TAXONOMY_OFF",
+    "PROVIDER_TAXONOMY_CUSTOM",
     "SERVICE_FACILITY_ALWAYS_ADDRESS_YES",
     "SERVICE_FACILITY_ALWAYS_ADDRESS_NO",
     "SERVICE_FACILITY_CONDITIONAL_ADDRESS_YES",
@@ -61,6 +62,23 @@ class PreviewRequest(BaseModel):
     plan_guid: GuidText | None = None
     option_code: PublicOptionCode
     audit_user: GuidText
+    taxonomy_code: str | None = None
+
+    @field_validator("taxonomy_code")
+    @classmethod
+    def normalize_taxonomy(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if len(value) != 10 or not value.isascii() or not value.isalnum():
+            raise ValueError("Enter a 10-character taxonomy code using letters and numbers.")
+        return value.upper()
+
+    @model_validator(mode="after")
+    def validate_taxonomy_selection(self):
+        if (self.option_code == "PROVIDER_TAXONOMY_CUSTOM") != (self.taxonomy_code is not None):
+            raise ValueError("A taxonomy code is required only for Custom taxonomy.")
+        return self
 
 
 class ApplyRequest(PreviewRequest):
@@ -76,6 +94,7 @@ class CurrentConfigurationRequest(BaseModel):
 
 
 class CurrentConfigurationDisplay(BaseModel):
+    taxonomy_code: str | None = None
     mode: Literal["ALWAYS", "CONDITIONAL", "NEVER"] | None = None
     report_address: Literal["Y", "N"] | None = None
     enabled: bool | None = None
@@ -138,6 +157,7 @@ class TechnicalChange(BaseModel):
 
 
 class ConfigurationResponse(BaseModel):
+    taxonomy_code: str | None = None
     status: Literal["PREVIEW", "APPLIED", "NO_CHANGE"]
     option_code: str
     display_label: str

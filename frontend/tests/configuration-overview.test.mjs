@@ -16,7 +16,7 @@ test("box summaries describe effective inherited values and conditional addresse
   assert.equal(valueCodesCurrentSummary(valueCodes({ effective_selections: flags() })), "CBSA Off; FIPS Off");
   assert.equal(genericCurrentSummary({ capability: "service-facility", display: { mode: "CONDITIONAL", report_address: "Y" } }), "When not HOME · Address included");
   assert.equal(genericCurrentSummary({ capability: "service-facility", display: { mode: "NEVER", report_address: "N" } }), "Off");
-  assert.equal(genericCurrentSummary({ capability: "provider-taxonomy", display: { enabled: true } }), "Billing Provider Taxonomy On");
+  assert.equal(genericCurrentSummary({ capability: "provider-taxonomy", display: { enabled: true } }), "Billing Provider Taxonomy Standard");
 });
 
 test("Value Codes overview uses effective flags regardless of edit intent or diagnostic labels", () => {
@@ -70,11 +70,11 @@ test("overview shares editor cache, isolates field errors, and refreshes after a
     await Promise.all([overview, editor]);
     assert.equal(calls, 1);
     assert.equal(currentBoxSummary("service-facility", context), "Unable to determine");
-    assert.equal(currentBoxSummary("provider-taxonomy", context), "Billing Provider Taxonomy Off");
+    assert.equal(currentBoxSummary("provider-taxonomy", context), "Billing Provider Taxonomy None");
     assert.equal(currentBoxSummary("value-codes", context), "CBSA On; FIPS Off");
     assert.equal(currentBoxSummary("remarks", context), "Custom Remarks: Synthetic custom remark");
     await currentConfigurationCache.load({ ...context, field_number: "81" }, async () => ({ capability: "provider-taxonomy", display: { enabled: true } }), true);
-    assert.equal(currentBoxSummary("provider-taxonomy", context), "Billing Provider Taxonomy On");
+    assert.equal(currentBoxSummary("provider-taxonomy", context), "Billing Provider Taxonomy Standard");
     assert.equal(currentBoxSummary("provider-taxonomy", { ...context, plan_guid: "other-plan" }), "Loading…");
   } finally { apiClient.overview = original; clearCurrentConfigurations(); }
 });

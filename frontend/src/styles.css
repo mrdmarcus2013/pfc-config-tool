@@ -433,6 +433,10 @@ fieldset:disabled .choice { background: #f3f5f6; }
 .remarks-input { display: grid; font-size: 1rem; font-weight: 650; gap: .45rem; margin: -1rem 0 1.4rem; }
 .remarks-input textarea { border: 1px solid #9eafb9; border-radius: 2px; color: #23374a; min-height: 120px; padding: .7rem; resize: vertical; }
 .remarks-input textarea:focus { border-color: #2e788c; box-shadow: 0 0 0 2px #d7e9ed; outline: none; }
+.taxonomy-code-entry { display: grid; gap: .45rem; margin-top: 1rem; }
+.taxonomy-code-entry label { font-weight: 650; }
+.taxonomy-code-entry input { width: 100%; max-width: 16rem; box-sizing: border-box; border: 1px solid #9eafb9; border-radius: 2px; color: #23374a; padding: .7rem; }
+.taxonomy-code-entry input:focus { border-color: #2e788c; box-shadow: 0 0 0 2px #d7e9ed; outline: none; }
 .character-counter { color: #637587; font-size: .82rem; font-weight: 500; justify-self: end; }
 .validation-message { color: #7a3e24; font-size: .88rem; font-weight: 500; }
 

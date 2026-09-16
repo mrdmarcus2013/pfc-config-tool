@@ -30,6 +30,7 @@ IS
     l_mode VARCHAR2(20);
     l_report_address VARCHAR2(1);
     l_enabled VARCHAR2(1);
+    l_taxonomy_code VARCHAR2(10);
     l_canonical VARCHAR2(1);
     l_prv t_effective_record;
     l_nm1 t_effective_record;
@@ -213,6 +214,18 @@ BEGIN
              AND l_prv.hef_hard_code IS NULL THEN 'Y'
             ELSE 'N'
         END;
+        IF l_enabled = 'Y' AND l_canonical = 'N' THEN
+            IF l_prv.hef_sto_proc IS NULL
+               AND LENGTH(l_prv.hef_hard_code) = 10
+               AND REGEXP_LIKE(l_prv.hef_hard_code, '^[A-Z0-9]{10}$', 'c') THEN
+                l_option_code := 'PROVIDER_TAXONOMY_CUSTOM';
+                l_taxonomy_code := l_prv.hef_hard_code;
+                l_canonical := 'Y';
+            ELSE
+                RAISE_APPLICATION_ERROR(c_err_current_unsupported,
+                    'Provider Taxonomy has an unsupported effective value.');
+            END IF;
+        END IF;
     ELSIF l_field_number = '77' THEN
         resolve_effective_record('D2310E2500NM1343', NULL, l_nm1);
         resolve_effective_record('D2310E2650N3346', NULL, l_n3);
@@ -281,6 +294,7 @@ BEGIN
             CAST(l_mode AS VARCHAR2(20)) AS "MODE",
             CAST(l_report_address AS VARCHAR2(1)) AS "REPORT_ADDRESS",
             CAST(l_enabled AS VARCHAR2(1)) AS "ENABLED",
+            CAST(l_taxonomy_code AS VARCHAR2(10)) AS "TAXONOMY_CODE",
             CAST(l_pfc_guid AS VARCHAR2(36)) AS "PFC_GUID",
             CAST(l_canonical AS VARCHAR2(1)) AS "IS_CANONICAL",
             l_owners AS "CONFIGURATION_OWNERS"

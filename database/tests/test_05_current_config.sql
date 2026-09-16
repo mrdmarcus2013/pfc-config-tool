@@ -18,6 +18,7 @@ DECLARE
     l_mode VARCHAR2(20);
     l_report_address VARCHAR2(1);
     l_enabled VARCHAR2(1);
+    l_taxonomy_code VARCHAR2(10);
     l_pfc_guid VARCHAR2(36);
     l_canonical VARCHAR2(1);
     l_state_hash VARCHAR2(64);
@@ -59,7 +60,7 @@ DECLARE
         );
         FETCH l_result INTO
             l_status, l_field_number, l_capability, l_option_code,
-            l_mode, l_report_address, l_enabled, l_pfc_guid, l_canonical, l_owners;
+            l_mode, l_report_address, l_enabled, l_taxonomy_code, l_pfc_guid, l_canonical, l_owners;
         IF l_result%NOTFOUND THEN
             RAISE_APPLICATION_ERROR(-20971, 'Current resolver returned no row.');
         END IF;
@@ -180,10 +181,13 @@ BEGIN
     assert_text('Template inherited Provider ON', l_option_code,
         'PROVIDER_TAXONOMY_ON');
 
-    call_current('10000000-0000-0000-0000-0000000000A4', '81');
-    assert_text('Hard-coded Provider effective ON', l_option_code,
-        'PROVIDER_TAXONOMY_ON');
-    assert_text('Hard-coded Provider noncanonical', l_canonical, 'N');
+    BEGIN
+        call_current('10000000-0000-0000-0000-0000000000A4', '81');
+        RAISE_APPLICATION_ERROR(-20972, 'Malformed hard-coded taxonomy must not appear as Standard.');
+    EXCEPTION
+        WHEN OTHERS THEN
+            IF SQLCODE <> -20041 THEN RAISE; END IF;
+    END;
 
     assert_service('SERVICE_FACILITY_ALWAYS_ADDRESS_YES', 'ALWAYS', 'Y');
     assert_service('SERVICE_FACILITY_ALWAYS_ADDRESS_NO', 'ALWAYS', 'N');

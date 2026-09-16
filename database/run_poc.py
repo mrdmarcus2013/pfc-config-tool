@@ -15,6 +15,7 @@ DATABASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = DATABASE_DIR.parent
 
 ACTION_SCRIPTS = {
+    "install_taxonomy": [DATABASE_DIR / "install" / "015_custom_taxonomy.sql"],
     "install_value_codes_controls": [DATABASE_DIR / "install" / "014_value_codes_controls.sql"],
     "install_value_codes_display": [DATABASE_DIR / "install" / "013_value_codes_display.sql"],
     "install_validation": [DATABASE_DIR / "install" / "012_validation_guards.sql"],
@@ -191,6 +192,7 @@ def main() -> int:
     parser.add_argument("--confirm-validation", action="store_true", help="Install the reviewed local configuration validation fixes")
     parser.add_argument("--confirm-value-codes-display", action="store_true", help="Install the reviewed local Value Codes current display metadata")
     parser.add_argument("--confirm-value-codes-controls", action="store_true", help="Install the reviewed local explicit Value Codes control behavior")
+    parser.add_argument("--confirm-taxonomy", action="store_true", help="Install the reviewed local custom taxonomy upgrade")
     args = parser.parse_args()
 
     connection: oracledb.Connection | None = None
@@ -210,6 +212,16 @@ def main() -> int:
                     print("No changes made. Repeat with --confirm-reset to replace these rows with the selected seed.")
                     return 0
 
+            if args.action == "install_taxonomy":
+                if os.environ.get("ORACLE_HOST", "").lower() not in {"localhost", "127.0.0.1", "::1"}:
+                    raise RuntimeError("Taxonomy installation requires local synthetic Oracle")
+                cursor.execute("SELECT COUNT(*) FROM payors WHERE payor_id IS NULL OR payor_id NOT LIKE 'SYN-%'")
+                if cursor.fetchone()[0]:
+                    raise RuntimeError("Taxonomy installation requires synthetic data")
+                print("Preview: replace the taxonomy option function and current/preview/apply routines; recompile dependents. Add validated custom taxonomy without changing configuration rows or tables.")
+                if not args.confirm_taxonomy:
+                    print("No changes made. Repeat with --confirm-taxonomy to install.")
+                    return 0
             if args.action == "install_value_codes_controls":
                 if os.environ.get("ORACLE_HOST", "").lower() not in {"localhost", "127.0.0.1", "::1"}:
                     raise RuntimeError("Value Codes controls installation is restricted to local synthetic Oracle")

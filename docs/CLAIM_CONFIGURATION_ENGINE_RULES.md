@@ -99,6 +99,21 @@ set it to `INHERIT`, retain all-false Default semantics. Every nonempty selectio
 keeps its existing behavior. Distinct empty OFF private option codes prevent
 reusing an inheritance Preview hash for an explicit OFF request.
 
+## Provider Taxonomy custom code
+
+Box 81cc supports None (existing Off), Standard (existing On/provider lookup),
+and Custom. Custom requires exactly 10 ASCII letters or digits, trims surrounding
+whitespace, and normalizes letters to uppercase. It enables the existing PRV
+record and sets managed PRV03 HARD_CODED_DATA while clearing STO_PROC_NAME.
+All other source fields and global safety rules are preserved. The desired code
+participates in functional comparison and the preview hash. Current reads must
+recognize and return an effective fixed code, including an inherited fixed code.
+Unsupported effective values must not be presented as Standard.
+
+Standard restores the provider lookup and clears the fixed code. None follows
+the existing Off recipe, also clearing the fixed code. Standard is not Default:
+it explicitly requests provider lookup. See [Custom taxonomy](CUSTOM_TAXONOMY.md).
+
 ## Current override safety
 
 An unsafe existing payor override is noncanonical. A valid explicit selection

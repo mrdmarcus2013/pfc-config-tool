@@ -267,6 +267,7 @@ def test_public_capabilities_include_structured_fields_without_private_ids():
     assert fields[0]["field_label"] == "Provider Taxonomy"
     assert [option["option_code"] for option in fields[0]["options"]] == [
         "PROVIDER_TAXONOMY_ON",
+        "PROVIDER_TAXONOMY_CUSTOM",
         "PROVIDER_TAXONOMY_OFF",
     ]
     assert fields[1]["field_label"] == "Service Facility"

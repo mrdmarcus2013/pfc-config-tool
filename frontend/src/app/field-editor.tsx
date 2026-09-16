@@ -20,6 +20,7 @@ import { EditorFooter } from "./editor-footer.js";
 import { ClaimFieldPanelHeader } from "./claim-field-panel-header.js";
 import { ModalSurface } from "./modal-surface.js";
 import { fieldEditorTitle } from "./presentation.js";
+import { TaxonomyControls, normalizeTaxonomyCode, validTaxonomyCode } from "./taxonomy-controls.js";
 import { PreviewResult } from "./preview-result.js";
 import { runEditorPreview, type PreviewRecord } from "./editor-preview.js";
 
@@ -40,6 +41,9 @@ export function FieldEditor({ field, context, onClose, supportDeveloperMode }: F
   const [serviceMode, setServiceMode] = useState<ServiceFacilityMode>("never");
   const [serviceAddress, setServiceAddress] = useState<ServiceFacilityAddress>("no");
   const [taxonomy, setTaxonomy] = useState<ProviderTaxonomySelection>("no");
+  const [taxonomyCode, setTaxonomyCode] = useState("");
+  const normalizedCode = normalizeTaxonomyCode(taxonomyCode);
+  const validTaxonomy = taxonomy !== "custom" || validTaxonomyCode(normalizedCode);
   const [previewRecord, setPreviewRecord] = useState<PreviewRecord<ConfigurationResponse> | null>(null);
   const [busy, setBusy] = useState<"preview" | "apply" | null>(null);
   const [error, setError] = useState<{ category: string; message: string } | null>(null);
@@ -56,15 +60,15 @@ export function FieldEditor({ field, context, onClose, supportDeveloperMode }: F
   const optionCode: PublicOptionCode = field.capabilityKey === "service-facility"
     ? serviceFacilityOption(serviceMode, serviceAddress)
     : providerTaxonomyOption(taxonomy);
-  const identity = previewIdentity(context, optionCode);
+  const identity = previewIdentity(context, optionCode, normalizedCode);
   const preview = currentPreview(previewRecord, identity);
-  const dirty = currentOptionDiffers(currentConfig, optionCode);
+  const dirty = currentOptionDiffers(currentConfig, optionCode, normalizedCode);
   const actionState = editorActionState({
     dirty, preview, busy, applyCompleted: success,
   });
   const selectionSummary = field.capabilityKey === "service-facility"
     ? `${SERVICE_MODE_LABEL[serviceMode]}; address: ${serviceAddress === "yes" ? "Yes" : "No"}`
-    : `Provider Taxonomy: ${taxonomy === "yes" ? "Yes" : "No"}`;
+    : `Provider Taxonomy: ${taxonomy === "custom" ? `Custom: ${normalizedCode}` : taxonomy === "yes" ? "Standard" : "None"}`;
 
   const initializeFromCurrent = (response: CurrentConfigurationResponse) => {
     const selections = selectionsFromCurrent(response);
@@ -72,6 +76,7 @@ export function FieldEditor({ field, context, onClose, supportDeveloperMode }: F
     setServiceMode(selections.serviceMode);
     setServiceAddress(selections.serviceAddress);
     setTaxonomy(selections.taxonomy);
+    setTaxonomyCode(response.display.taxonomy_code ?? "");
     setPreviewRecord(null);
     setConfirmationOpen(false);
   };
@@ -125,22 +130,22 @@ export function FieldEditor({ field, context, onClose, supportDeveloperMode }: F
   };
 
   const runPreview = () => runEditorPreview({
-    canPreview: dirty, gate: requestGate.current, identity,
-    request: () => apiClient.preview(previewRequest(context, optionCode)),
+    canPreview: dirty && validTaxonomy, gate: requestGate.current, identity,
+    request: () => apiClient.preview(previewRequest(context, optionCode, normalizedCode)),
     setBusy, setError, setSuccess, setPreviewRecord,
   });
 
   const runApply = async () => {
-    if (!dirty || !previewAllowsApply(preview) || !requestGate.current.tryEnter()) return;
+    if (!dirty || !validTaxonomy || !previewAllowsApply(preview) || !requestGate.current.tryEnter()) return;
     setBusy("apply"); setConfirmationOpen(false); setError(null);
     try {
       await apiClient.apply({
-        ...previewRequest(context, optionCode), expected_state_hash: preview!.state_hash,
+        ...previewRequest(context, optionCode, normalizedCode), expected_state_hash: preview!.state_hash,
       });
       setSuccess(false); setPreviewRecord(null);
       currentConfigurationCache.invalidate(currentRequest);
       const refreshed = await loadCurrent(true);
-      if (refreshed?.effective_option_code === optionCode) {
+      if (refreshed !== null && !currentOptionDiffers(refreshed, optionCode, normalizedCode)) {
         setSuccess(true);
       } else if (refreshed !== null) {
         setError({
@@ -155,7 +160,7 @@ export function FieldEditor({ field, context, onClose, supportDeveloperMode }: F
       if (safe.category === "stale_preview") {
         currentConfigurationCache.invalidate(currentRequest);
         const refreshed = await loadCurrent(true, false);
-        if (refreshed?.effective_option_code === optionCode) setError(null);
+        if (refreshed !== null && !currentOptionDiffers(refreshed, optionCode, normalizedCode)) setError(null);
       }
     } finally { setBusy(null); requestGate.current.exit(); }
   };
@@ -187,7 +192,7 @@ export function FieldEditor({ field, context, onClose, supportDeveloperMode }: F
                         <div><dt>Report address</dt><dd>{currentConfig.display.report_address === "Y" ? "Yes" : "No"}</dd></div>
                       </>
                     ) : (
-                      <div><dt>Report Provider Taxonomy</dt><dd>{currentConfig.display.enabled ? "Yes" : "No"}</dd></div>
+                      <div><dt>Report Provider Taxonomy</dt><dd>{currentConfig.display.taxonomy_code ? `Custom: ${currentConfig.display.taxonomy_code}` : currentConfig.display.enabled ? "Standard" : "None"}</dd></div>
                     )}
                   </dl>
                   {supportDeveloperMode && (
@@ -232,17 +237,9 @@ export function FieldEditor({ field, context, onClose, supportDeveloperMode }: F
                       </fieldset>
                     </>
                   ) : (
-                    <fieldset>
-                      <legend>Report Provider Taxonomy?</legend>
-                      <div className="inline-choices">
-                        {(["yes", "no"] as ProviderTaxonomySelection[]).map((selection) => (
-                          <label className="choice compact" key={selection}>
-                            <input type="radio" name="provider-taxonomy" checked={taxonomy === selection} onChange={() => { setTaxonomy(selection); invalidate(); }} />
-                            <span>{selection === "yes" ? "Yes" : "No"}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </fieldset>
+                    <TaxonomyControls selection={taxonomy} code={taxonomyCode} busy={busy !== null}
+                      onSelection={(value) => { setTaxonomy(value); invalidate(); }}
+                      onCode={(value) => { setTaxonomyCode(value); invalidate(); }} />
                   )}
                   <p className={dirty ? "dirty-indicator" : "unchanged-indicator"}>
                     {dirty ? "Proposed configuration differs from the current configuration." : "Matches current configuration."}
@@ -260,12 +257,13 @@ export function FieldEditor({ field, context, onClose, supportDeveloperMode }: F
           )}
           {success && <div className="notice success" role="status"><strong>Configuration applied</strong><p>The requested configuration was applied and checked against the current state.</p></div>}
 
+          {preview && currentConfig?.display.taxonomy_code && taxonomy !== "custom" && <p>The fixed taxonomy code will be removed{taxonomy === "yes" ? " and the provider's taxonomy will be used" : " and taxonomy will not be reported"}.</p>}
           {preview && <PreviewResult optionCode={optionCode} preview={preview} supportDeveloperMode={supportDeveloperMode} />}
         </div>
 
         <EditorFooter
           actionState={actionState}
-          previewDisabled={busy !== null || currentLoading || currentConfig === null || !dirty}
+          previewDisabled={busy !== null || currentLoading || currentConfig === null || !dirty || !validTaxonomy}
           previewLabel={busy === "preview" ? "Previewing…" : "Preview"}
           onDismiss={onClose}
           onPreview={runPreview}
@@ -274,7 +272,7 @@ export function FieldEditor({ field, context, onClose, supportDeveloperMode }: F
 
         {confirmationOpen && <div className="confirmation-backdrop" role="presentation"><ModalSurface className="confirmation" role="alertdialog" aria-modal="true" aria-labelledby="confirmation-title" onDismiss={() => setConfirmationOpen(false)} focusOnOpen="first">
           <h3 id="confirmation-title">Apply configuration?</h3>
-          <p><strong>Field {field.fieldNumber} — {field.label}</strong></p><p>{selectionSummary}</p>
+          <p><strong>Field {field.fieldNumber} — {field.label}</strong></p><p>{selectionSummary}</p>{currentConfig?.display.taxonomy_code && taxonomy !== "custom" && <p>The fixed taxonomy code will be removed.</p>}
           <div className="confirmation-actions"><button type="button" className="secondary-button" data-modal-initial-focus onClick={() => setConfirmationOpen(false)}>Cancel</button><button type="button" className="primary-button" disabled={busy !== null} onClick={runApply}>Apply</button></div>
         </ModalSurface></div>}
       </ModalSurface>

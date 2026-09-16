@@ -42,6 +42,7 @@ _ORACLE_ERROR_MAP: dict[int, tuple[int, str, str]] = {
     20040: (500, "application_failure", "The configuration operation failed safely."),
     20041: (409, "current_state_unsupported", "The current effective configuration is inconsistent or unsupported."),
     20042: (422, "unsupported_field", "Current configuration is not available for that field."),
+    20043: (422, "invalid_request", "Custom taxonomy requires exactly 10 letters or numbers; other selections cannot include a code."),
     20050: (404, "payor_not_found", "The requested payor was not found."),
     20051: (400, "invalid_request", "Select Home Health or Hospice."),
     20052: (409, "line_of_business_already_saved", "Line of Business is already saved for this payor."),

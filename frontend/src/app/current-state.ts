@@ -30,7 +30,9 @@ export const currentConfigurationKey = (request: CurrentStateRequest): string =>
 export const currentOptionDiffers = (
   current: CurrentConfigurationResponse | null,
   proposedOption: PublicOptionCode,
-): boolean => current !== null && current.effective_option_code !== proposedOption;
+  taxonomyCode?: string,
+): boolean => current !== null && (current.effective_option_code !== proposedOption ||
+    (proposedOption === "PROVIDER_TAXONOMY_CUSTOM" && current.display.taxonomy_code !== taxonomyCode));
 
 export const selectionsFromCurrent = (
   current: CurrentConfigurationResponse,
@@ -46,6 +48,8 @@ export const selectionsFromCurrent = (
       return { serviceMode: "conditional", serviceAddress: "no", taxonomy: "no" };
     case "SERVICE_FACILITY_NEVER":
       return { serviceMode: "never", serviceAddress: "no", taxonomy: "no" };
+    case "PROVIDER_TAXONOMY_CUSTOM":
+      return { serviceMode: "never", serviceAddress: "no", taxonomy: "custom" };
     case "PROVIDER_TAXONOMY_ON":
       return { serviceMode: "never", serviceAddress: "no", taxonomy: "yes" };
     case "PROVIDER_TAXONOMY_OFF":

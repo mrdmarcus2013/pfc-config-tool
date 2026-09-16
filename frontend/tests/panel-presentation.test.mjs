@@ -113,12 +113,12 @@ test("NO_CHANGE preview explicitly says the request is already configured and pe
 
 test("Provider Taxonomy ON, OFF, and NO_CHANGE summaries are support-friendly", () => {
   const on = supportPreviewPresentation("PROVIDER_TAXONOMY_ON", previewResponse());
-  assert.equal(on.requestedConfiguration[0].value, "Yes");
+  assert.equal(on.requestedConfiguration[0].value, "Standard");
   assert.match(on.message, /will be enabled for this payor/);
   assert.deepEqual(on.changes, ["Provider Taxonomy configuration will be updated."]);
 
   const off = supportPreviewPresentation("PROVIDER_TAXONOMY_OFF", previewResponse({ option_code: "PROVIDER_TAXONOMY_OFF" }));
-  assert.equal(off.requestedConfiguration[0].value, "No");
+  assert.equal(off.requestedConfiguration[0].value, "None");
   assert.match(off.message, /will be disabled for this payor/);
 
   const noChange = supportPreviewPresentation("PROVIDER_TAXONOMY_ON", previewResponse({ status: "NO_CHANGE", change_count: 0, debug_changes: [] }));

@@ -15,7 +15,8 @@ CREATE OR REPLACE PROCEDURE pfc_apply_option (
     p_mode                IN VARCHAR2,
     p_expected_state_hash IN VARCHAR2 DEFAULT NULL,
     p_summary             OUT SYS_REFCURSOR,
-    p_changes             OUT SYS_REFCURSOR
+    p_changes             OUT SYS_REFCURSOR,
+    p_taxonomy_code       IN VARCHAR2 DEFAULT NULL
 )
 AUTHID DEFINER
 IS
@@ -1621,7 +1622,17 @@ BEGIN
             'EXPECTED_STATE_HASH is required for APPLY.');
     END IF;
 
-    l_option := pfc_option_registry.get_option(p_option_code);
+    IF UPPER(TRIM(p_option_code)) = 'PROVIDER_TAXONOMY_CUSTOM' THEN
+        IF TRIM(p_taxonomy_code) IS NULL THEN
+            RAISE_APPLICATION_ERROR(-20043, 'Custom taxonomy requires a 10-character code.');
+        END IF;
+        l_option := pfc_opt_provider_taxonomy_on(p_taxonomy_code);
+    ELSE
+        IF p_taxonomy_code IS NOT NULL THEN
+            RAISE_APPLICATION_ERROR(-20043, 'Only Custom taxonomy accepts a code.');
+        END IF;
+        l_option := pfc_option_registry.get_option(p_option_code);
+    END IF;
     validate_option_definition;
     resolve_all_targets;
     compute_state_hash;
@@ -1712,7 +1723,7 @@ EXCEPTION
             pfc_config_internal.c_err_pfc_not_found,
             pfc_config_internal.c_err_pfc_start_date_tie,
             pfc_config_internal.c_err_unsafe_source,
-            -20020, -20021,
+            -20020, -20021, -20043,
             c_err_invalid_mode,
             c_err_missing_audit_user,
             c_err_invalid_option,

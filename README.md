@@ -53,6 +53,10 @@ fallback. Never commit `.env`.
 
 ## Backend Setup
 
+Box 81cc supports **None / Standard / Custom**, including a fixed 10-character
+taxonomy code. See [Custom taxonomy](docs/CUSTOM_TAXONOMY.md) for behavior and the
+local upgrade command required before restarting an existing installation.
+
 Create or activate a virtual environment, then install the small dependency set:
 
 ```powershell

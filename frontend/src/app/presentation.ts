@@ -27,7 +27,8 @@ const providerPresentation = (
   optionCode: PublicOptionCode,
   preview: ConfigurationResponse,
 ): SupportPreviewPresentation => {
-  const enabled = optionCode === "PROVIDER_TAXONOMY_ON";
+  const enabled = optionCode !== "PROVIDER_TAXONOMY_OFF";
+  const custom = optionCode === "PROVIDER_TAXONOMY_CUSTOM";
   const noChange = preview.status === "NO_CHANGE";
   return {
     statusLabel: noChange ? "Already configured" : "Preview ready",
@@ -36,7 +37,7 @@ const providerPresentation = (
       ? "The requested configuration matches the current effective configuration."
       : `Provider Taxonomy reporting will be ${enabled ? "enabled" : "disabled"} for this payor.`,
     requestedConfiguration: [
-      { label: "Provider Taxonomy", value: enabled ? "Yes" : "No" },
+      { label: "Provider Taxonomy", value: custom ? `Custom: ${preview.taxonomy_code ?? "Unavailable"}` : enabled ? "Standard" : "None" },
     ],
     changes: noChange ? [] : ["Provider Taxonomy configuration will be updated."],
   };

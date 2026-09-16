@@ -1,4 +1,5 @@
 CREATE OR REPLACE FUNCTION pfc_opt_provider_taxonomy_on
+    (p_taxonomy_code IN VARCHAR2 DEFAULT NULL)
     RETURN pfc_option_types.t_option_definition
     AUTHID DEFINER
 IS
@@ -44,6 +45,22 @@ BEGIN
     l_option.targets(1).hef_requirements(1)
         .attribute_requirements(2).desired_value.value_text := NULL;
 
+    IF p_taxonomy_code IS NOT NULL THEN
+        IF LENGTH(TRIM(p_taxonomy_code)) <> 10
+           OR NOT REGEXP_LIKE(TRIM(p_taxonomy_code), '^[A-Za-z0-9]{10}$', 'c') THEN
+            RAISE_APPLICATION_ERROR(-20043, 'Enter a 10-character taxonomy code using letters and numbers.');
+        END IF;
+        l_option.option_code := 'PROVIDER_TAXONOMY_CUSTOM';
+        l_option.display_label := 'Custom taxonomy';
+        l_option.targets(1).hef_requirements(1).attribute_requirements(1)
+            .desired_value.action_code := pfc_option_types.c_action_clear;
+        l_option.targets(1).hef_requirements(1).attribute_requirements(1)
+            .desired_value.value_text := NULL;
+        l_option.targets(1).hef_requirements(1).attribute_requirements(2)
+            .desired_value.action_code := pfc_option_types.c_action_set;
+        l_option.targets(1).hef_requirements(1).attribute_requirements(2)
+            .desired_value.value_text := UPPER(TRIM(p_taxonomy_code));
+    END IF;
     RETURN l_option;
 END pfc_opt_provider_taxonomy_on;
 /
