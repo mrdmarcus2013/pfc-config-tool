@@ -1,10 +1,12 @@
 # PFC viability demonstration: questions and answers
 
 Initially prepared September 7, 2026, for the accepted checkpoint `3d90904`;
-updated September 11 for direct Value Codes controls and end-user presentation.
+updated September 17 for Custom Taxonomy and current demo validation notes.
 These answers describe the working demonstration. Production work is deferred.
 The database contains synthetic data modeled on known MatrixCare schema and
 configuration behavior, with explicitly identified additions for the tool.
+For a suggested walkthrough and developer code map, see the
+[demo handoff notes](DEMO_HANDOFF.md).
 
 ## Developer questions
 
@@ -145,6 +147,9 @@ eligible payor.
 **13. Which capabilities are actually implemented?**
 
 Provider Taxonomy, Service Facility, Value Codes and Remarks are editable.
+Provider Taxonomy offers None, Standard lookup, and a fixed Custom code.
+Custom requires 10 ASCII letters or digits and normalizes them to uppercase;
+format validation does not check the code against the NUCC code set.
 The tool also includes linked payor/plan selectors, payor-wide LOB assignment
 and change, and Copy Payor Settings. Value Codes supports different Home Health
 and Hospice choices. The broader claim layout includes boxes whose editing
@@ -155,12 +160,22 @@ capabilities have not been implemented. The configured billing-form scope is
 
 It performs real reads and writes against the local Oracle database. A successful
 Apply commits changes to synthetic configuration rows, which subsequent reads
-can retrieve. Preview leaves saved configuration unchanged. Automated mutation
-tests use rollback so their temporary changes do not replace the user's saved
-demo settings.
+can retrieve. Preview leaves saved configuration unchanged. The isolated engine
+tests use rollback and restoration checks. Some legacy integration tests commit
+fixture cleanup, and one Copy test creates a failure-injection trigger; review
+the specific suite before enabling it against a working demo.
 
 **15. What evidence supports the demonstration?**
 
+The September 17 review of `a8385cb`, including Custom Taxonomy, passed 417
+default Python tests (257 opt-in tests skipped), 151 frontend tests, and 217
+selected rollback-only Oracle checks. Frontend build/typecheck and clean Python
+and frontend installations passed. Two read-only smoke tests failed because
+their fixed demo-state expectations differed from the current database; this
+does not establish an engine failure. A fresh Oracle schema installation was
+not repeated during that review. See the [detailed review notes](DEVELOPER_HANDOFF_AUDIT.md).
+
+For historical context, the earlier
 September 11 verification passed 148 frontend tests, 606 Python tests and the
 frontend build/typecheck; 39 environment-gated Python tests were skipped.
 All 706 read/preview cases and 35 rollback-only Apply cases exactly matched a

@@ -252,8 +252,12 @@ python -m pip install -r requirements.txt
 python database/run_poc.py all
 ```
 
-After the initial installation, use `python database/run_poc.py test` to rerun
-all already-installed tests without recreating or reseeding the schema, or use
+After the initial installation, `python database/run_poc.py test` runs the
+selected Value Codes and hierarchy checkpoint SQL tests in `tests/run_all.sql`
+without recreating or reseeding the schema. It does not run the complete SQL
+archive or the Python Oracle integration suites. See the
+[demo validation notes](../docs/DEMO_HANDOFF.md#validation-notes) for the routine
+Python/frontend checks and integration-test distinctions. Use
 `python database/run_poc.py reset` to reset and reseed the POC data.
 
 ## Script 3 incremental workflow
@@ -271,7 +275,8 @@ only the known legacy synthetic PAYOR_B fixture when that exact old fixture is
 present. `install3` installs `PFC_APPLY_OPTION` and its read-only
 `PFC_GET_CURRENT_CONFIG` companion. Neither action recreates
 tables or reseeds unrelated scenarios. `test3` runs only the Script 3 tests;
-`test` includes them in the complete suite. Every mutation scenario rolls back
+`test` is the separate Value Codes/hierarchy checkpoint subset described above.
+The Script 3 mutation scenarios roll back
 so repeated runs start from the same data.
 
 Schemas seeded before the explicit-target reconciliation should be reset and

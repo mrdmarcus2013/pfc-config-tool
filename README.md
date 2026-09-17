@@ -1,11 +1,18 @@
 # PFC Configuration Tool
 
+**Developer demo:** a working local demonstration using synthetic Oracle data.
+Start with the [demo handoff and developer notes](docs/DEMO_HANDOFF.md) for the
+feature summary, suggested walkthrough, code map, and known limitations.
+The handoff is for design and implementation review; production integration is
+future work.
+
 **New computer? Start with the [complete Windows setup walkthrough](docs/FRESH_COMPUTER_SETUP.md).**
 It covers prerequisites, local Oracle user/storage creation, synthetic demo data,
 both application views, verification, and later restarts.
 
 For a recorded demonstration, [download the demo video](https://github.com/mrdmarcus2013/pfc-config-tool/releases/tag/demo-video-2026-09-11).
 Open **Assets** on that page and select the MP4 (about 232 MiB).
+The September 11 recording predates the Custom Taxonomy feature added September 16.
 
 For project-manager, developer and end-user discussions, see the
 [viability demonstration Q&A](docs/VIABILITY_DEMO_QA.md).
@@ -102,6 +109,7 @@ The API accepts these public option codes:
 | --- | --- | --- | --- |
 | Provider Taxonomy | 81 | `PROVIDER_TAXONOMY_ON` | Enable Provider Taxonomy |
 | Provider Taxonomy | 81 | `PROVIDER_TAXONOMY_OFF` | Disable Provider Taxonomy |
+| Provider Taxonomy | 81 | `PROVIDER_TAXONOMY_CUSTOM` | Report the supplied fixed 10-character `taxonomy_code` |
 | Service Facility | 77 | `SERVICE_FACILITY_ALWAYS_ADDRESS_YES` | Always report the service facility and its address |
 | Service Facility | 77 | `SERVICE_FACILITY_ALWAYS_ADDRESS_NO` | Always report the service facility without its address |
 | Service Facility | 77 | `SERVICE_FACILITY_CONDITIONAL_ADDRESS_YES` | Report the service facility and address when the care location is not HOME |
@@ -189,3 +197,7 @@ Remove-Item Env:RUN_ORACLE_INTEGRATION
 The smoke test uses only synthetic fixtures and invokes read-only current-state
 resolution and `PREVIEW`, so the adapter rolls transactions back and does not
 persist a configuration change.
+It assumes particular saved demo settings; the September 17 review found two
+fixture-expectation failures on the current database. Use the setup guide's
+health/catalog checks for routine startup verification and see the
+[demo validation notes](docs/DEMO_HANDOFF.md#validation-notes) for test scope.
